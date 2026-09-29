@@ -34,7 +34,7 @@ class FinancialChargeSeeder extends Seeder
             foreach ($chargeData as $categoryName => $data) {
                 $category = FinancialCategory::where('name', $categoryName)->first();
 
-                FinancialCharge::create([
+                $charge = FinancialCharge::create([
                     'student_id' => $student->id,
                     'financial_category_id' => $category->id,
                     'description' => $data['description'],
@@ -43,6 +43,19 @@ class FinancialChargeSeeder extends Seeder
                     'academic_year_id' => $academicYear->id,
                     'semester_id' => $semester->id,
                     'status' => 'active',
+                ]);
+
+                \App\Models\AccountReceivable::create([
+                    'reference_number' => \App\Models\AccountReceivable::nextReferenceNumber(),
+                    'student_id' => $student->id,
+                    'financial_charge_id' => $charge->id,
+                    'description' => $data['description'],
+                    'billed_amount' => $data['amount'],
+                    'paid_amount' => 0,
+                    'balance' => $data['amount'],
+                    'due_date' => $charge->due_date,
+                    'status' => 'open',
+                    'assessed_by' => null,
                 ]);
 
                 $totalCharges += $data['amount'];

@@ -19,6 +19,7 @@ class PayableController extends Controller
             $q->where(fn($w) => $w->where('vendor', 'ilike', "%{$s}%")->orWhere('invoice_number', 'ilike', "%{$s}%"));
         }
         if ($request->filled('payment_status')) $q->where('payment_status', $request->payment_status);
+        if ($request->filled('approval_status')) $q->where('approval_status', $request->approval_status);
         if ($request->filled('date_from')) $q->whereDate('due_date', '>=', $request->date_from);
         if ($request->filled('date_to')) $q->whereDate('due_date', '<=', $request->date_to);
         $records = $q->orderBy('due_date')->paginate(15)->withQueryString();
@@ -64,8 +65,9 @@ class PayableController extends Controller
 
     public function show(AccountsPayable $payable)
     {
-        $payable->load('payments');
-        return view('admin.fms.payables.show', ['record' => $payable]);
+        $payable->load(['payments', 'expense', 'budgetPlan', 'fund', 'disbursement']);
+        $history = \App\Models\AuditLog::with('user')->where('module', 'accounts_payable')->where('record_id', (string) $payable->id)->latest('id')->take(30)->get();
+        return view('admin.fms.payables.show', ['record' => $payable, 'history' => $history]);
     }
 
     public function edit(AccountsPayable $payable)
@@ -109,18 +111,95 @@ class PayableController extends Controller
             $payable->increment('amount_paid', $data['amount']);
             $payable->refresh();
             $this->syncStatus($payable);
+            // Fund moves once per payment; linked disbursement mirrors Paid/Partially Paid.
+            \App\Services\ApDisbursementService::moveFund($payable->fund_id, (float) $data['amount'], $payable->invoice_number, 'Payment for '.$payable->ap_number);
+            \App\Services\ApDisbursementService::syncFromPayablePayment($payable->fresh());
         });
-        AuditService::log('pay', 'accounts_payable', (string) $payable->id, null, null, "Admin ".auth()->user()->name." posted P".number_format($data['amount'], 2)." payment to Invoice #{$payable->invoice_number}.");
-        return back()->with('success', 'Payment posted.');
+        AuditService::log('pay', 'accounts_payable', (string) $payable->id, null, null, "Admin ".auth()->user()->name." posted P".number_format($data['amount'], 2)." payment to Invoice #{$payable->invoice_number} (linked disbursement synced).");
+        return back()->with('success', 'Payment posted. Linked disbursement synced.');
     }
 
     public function destroy(AccountsPayable $payable)
     {
         abort_if((float) $payable->amount_paid > 0, 422, 'Payables with payments cannot be deleted.');
+        $wasApproved = ($payable->approval_status ?? 'draft') === 'approved';
         $old = $payable->toArray();
-        $payable->delete();
-        AuditService::log('delete', 'accounts_payable', (string) $payable->id, $old, null, "Admin ".auth()->user()->name." deleted Payable Invoice #{$old['invoice_number']}.");
-        return redirect()->route('admin.payables.index')->with('success', 'Payable deleted.');
+        DB::transaction(function () use ($payable, $wasApproved) {
+            // A pending auto-disbursement dies with its AP; release the committed budget once.
+            \App\Services\ApDisbursementService::cancelFor($payable, 'cancelled/deleted');
+            if ($wasApproved) \App\Services\ApDisbursementService::releaseBudget($payable);
+            $payable->delete();
+        });
+        AuditService::log('delete', 'accounts_payable', (string) $payable->id, $old, null, "Admin ".auth()->user()->name." deleted Payable Invoice #{$old['invoice_number']} (linked disbursement cancelled, budget released).");
+        return redirect()->route('admin.payables.index')->with('success', 'Payable deleted. Linked disbursement cancelled.');
+    }
+
+    /** Approve submitted payable — same record, submitted → approved, then auto-forward to Disbursement. */
+    public function approve(Request $request, AccountsPayable $payable)
+    {
+        abort_unless(auth()->user()->role === 'admin', 403, 'Only admin can approve.');
+        abort_if(! in_array($payable->approval_status ?? 'draft', ['submitted', 'under_review'], true), 422, 'Only submitted payables can be approved.');
+        $request->validate(['admin_remarks' => 'nullable|string|max:5000']);
+        $old = $payable->approval_status;
+        DB::transaction(function () use ($request, $payable) {
+            // Commit budget FIRST so over-budget approvals fail before any state change.
+            \App\Services\ApDisbursementService::commitBudget($payable->fresh());
+            $payable->update([
+                'approval_status' => 'approved',
+                'payment_status' => $payable->payment_status === 'pending' ? 'approved' : $payable->payment_status,
+                'reviewed_at' => now(), 'reviewed_by' => auth()->id(),
+                'approved_by' => auth()->id(), 'approved_at' => now(),
+                'admin_remarks' => $request->input('admin_remarks') ?: $payable->admin_remarks,
+            ]);
+            // Auto-generate the single disbursement record (idempotent) — no manual Create Expense needed.
+            \App\Services\ApDisbursementService::generateFor($payable->fresh());
+        });
+        $disbursement = \App\Models\Expense::where('related_payable_id', $payable->id)->first();
+        AuditService::log('approve', 'accounts_payable', (string) $payable->id, ['status' => $old], ['status' => 'approved'], "Admin ".auth()->user()->name." approved Payable Invoice #{$payable->invoice_number} — auto-forwarded as Disbursement ".($disbursement->reference_number ?? '—').".");
+        \App\Services\WorkflowService::notifyUser($payable->created_by, "Payable Invoice #{$payable->invoice_number} has been approved.", "Disbursement ".($disbursement->reference_number ?? '')." was auto-generated in Expense & Disbursement Tracking.");
+        return back()->with('success', 'Payable approved and auto-forwarded to Expense & Disbursement Tracking as '.($disbursement->reference_number ?? 'disbursement').'.');
+    }
+
+    /** Reject — same record, submitted → rejected (reason required). */
+    public function reject(Request $request, AccountsPayable $payable)
+    {
+        abort_unless(auth()->user()->role === 'admin', 403, 'Only admin can reject.');
+        $data = $request->validate(['rejection_reason' => 'required|string|max:5000', 'admin_remarks' => 'nullable|string|max:5000']);
+        abort_if(! in_array($payable->approval_status ?? 'draft', ['submitted', 'under_review'], true), 422, 'Only submitted payables can be rejected.');
+        $payable->update([
+            'approval_status' => 'rejected', 'rejection_reason' => $data['rejection_reason'],
+            'admin_remarks' => $data['admin_remarks'] ?? $payable->admin_remarks,
+            'reviewed_at' => now(), 'reviewed_by' => auth()->id(),
+            'revision_number' => ((int) $payable->revision_number) + 1,
+        ]);
+        AuditService::log('reject', 'accounts_payable', (string) $payable->id, ['status' => 'submitted'], ['status' => 'rejected'], "Admin ".auth()->user()->name." rejected Payable Invoice #{$payable->invoice_number}: {$data['rejection_reason']}");
+        \App\Services\WorkflowService::notifyUser($payable->created_by, "Payable Invoice #{$payable->invoice_number} was rejected. Reason: {$data['rejection_reason']}", "Revise the same record and resubmit.");
+        return back()->with('success', 'Payable rejected and returned for revision.');
+    }
+
+    /**
+     * Self-healing sync for APs approved before the auto-forward went live
+     * (or any approved AP missing its disbursement). Idempotent.
+     */
+    public function generateDisbursement(AccountsPayable $payable)
+    {
+        abort_unless(auth()->user()->role === 'admin', 403, 'Only admin can sync.');
+        abort_if(($payable->approval_status ?? 'draft') !== 'approved', 422, 'Only approved payables can be forwarded.');
+        DB::transaction(function () use ($payable) {
+            // Commit budget only together with a first-time generation — never twice.
+            if (! \App\Models\Expense::where('related_payable_id', $payable->id)->lockForUpdate()->exists()) {
+                \App\Services\ApDisbursementService::commitBudget($payable->fresh());
+                \App\Services\ApDisbursementService::generateFor($payable->fresh());
+            }
+        });
+        $dis = \App\Models\Expense::where('related_payable_id', $payable->id)->first();
+        return back()->with('success', 'Synced to Expense & Disbursement Tracking as '.($dis->reference_number ?? 'disbursement').'.');
+    }
+
+    /** Public wrapper so the disbursement service can reuse the same status rules. */
+    public function syncStatusPublic(AccountsPayable $p): void
+    {
+        $this->syncStatus($p->fresh());
     }
 
     protected function syncStatus(AccountsPayable $p): void

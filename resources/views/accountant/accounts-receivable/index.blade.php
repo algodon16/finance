@@ -1,11 +1,11 @@
 @extends('layouts.app')
 
-@section('title', 'Accounts Receivable')
+@section('title', 'Accounts Receivable Management')
 
 @section('content')
 <div class="page-header">
     <div>
-        <h2>Accounts Receivable</h2>
+        <h2>Accounts Receivable Management</h2>
         <p class="page-subtitle">Monitor outstanding student balances and receivables.</p>
     </div>
 </div>
@@ -32,12 +32,12 @@
 </div>
 
 <div class="filter-bar">
-    <form method="GET" action="{{ route('accountant.accounts-receivable.index') }}" class="filter-form">
-        <div class="form-group">
+    <form method="GET" action="{{ route('accountant.accounts-receivable.index') }}" class="filter-form" style="align-items:flex-end;">
+        <div class="form-group" style="flex:0 1 200px;min-width:160px;">
             <label for="search">Search</label>
             <input type="text" name="search" id="search" placeholder="Search student, ID..." value="{{ request('search') }}" class="form-control">
         </div>
-        <div class="form-group">
+        <div class="form-group" style="min-width:150px;">
             <label for="program">Program</label>
             <select name="program" id="program" class="form-control">
                 <option value="">All Programs</option>
@@ -46,7 +46,7 @@
                 @endforeach
             </select>
         </div>
-        <div class="form-group">
+        <div class="form-group" style="min-width:150px;">
             <label for="year_level">Year Level</label>
             <select name="year_level" id="year_level" class="form-control">
                 <option value="">All Year Levels</option>
@@ -55,7 +55,7 @@
                 @endforeach
             </select>
         </div>
-        <div class="form-group">
+        <div class="form-group" style="min-width:150px;">
             <label for="academic_year_id">Academic Year</label>
             <select name="academic_year_id" id="academic_year_id" class="form-control">
                 <option value="">All Years</option>
@@ -64,7 +64,7 @@
                 @endforeach
             </select>
         </div>
-        <div class="form-group">
+        <div class="form-group" style="min-width:150px;">
             <label for="semester_id">Semester</label>
             <select name="semester_id" id="semester_id" class="form-control">
                 <option value="">All Semesters</option>
@@ -73,7 +73,7 @@
                 @endforeach
             </select>
         </div>
-        <div class="form-group">
+        <div class="form-group" style="min-width:150px;">
             <label for="balance_status">Balance Status</label>
             <select name="balance_status" id="balance_status" class="form-control">
                 <option value="">All</option>
@@ -82,8 +82,8 @@
                 <option value="overdue" {{ request('balance_status') === 'overdue' ? 'selected' : '' }}>Overdue</option>
             </select>
         </div>
-        <div class="form-actions-inline">
-            <button type="submit" class="btn btn-primary">Filter</button>
+        <div style="display:flex;gap:8px;">
+            <button type="submit" class="btn btn-secondary">Filter</button>
             <a href="{{ route('accountant.accounts-receivable.index') }}" class="btn btn-secondary">Clear</a>
         </div>
     </form>

@@ -50,7 +50,7 @@ class ReportController extends Controller
     public function expenses(Request $request)
     {
         [$from, $to] = $this->range($request);
-        $records = Expense::whereBetween('expense_date', [$from, $to])
+        $records = Expense::financiallyActive()->whereBetween('expense_date', [$from, $to])
             ->when($request->filled('department'), fn($q) => $q->where('department', $request->department))
             ->when($request->filled('expense_category'), fn($q) => $q->where('expense_category', $request->expense_category))
             ->orderBy('expense_date')->get();
@@ -106,7 +106,7 @@ class ReportController extends Controller
     public function executive(Request $request)
     {
         $revenue = (float) Payment::where(fn($q) => $q->where('status', 'approved')->orWhere('status', 'verified')->orWhere('verification_status', 'verified')->orWhere('verification_status', 'reconciled'))->sum('amount');
-        $expenses = (float) Expense::where('approval_status', 'approved')->sum('amount');
+        $expenses = (float) Expense::financiallyActive()->where('approval_status', 'approved')->sum('amount');
         $receivable = (float) StudentAccount::sum('outstanding_balance');
         $payables = (float) AccountsPayable::all()->sum(fn($p) => (float) $p->remaining_balance);
         $funds = (float) Fund::where('status', 'active')->sum('current_balance');
@@ -115,6 +115,42 @@ class ReportController extends Controller
             ->whereNotNull('payment_date')->groupBy('m')->orderBy('m', 'desc')->take(12)->get()->reverse()->values();
         $this->logView('Executive Financial Overview', $request);
         return view('admin.fms.reports.executive', compact('revenue', 'expenses', 'receivable', 'payables', 'funds', 'net', 'monthly'));
+    }
+
+    /** Reconciliation inbox — same ReconciliationRecord rows the Accountant submitted. */
+    public function reconciliations(Request $request)
+    {
+        $q = \App\Models\ReconciliationRecord::with('payment')->orderByDesc('created_at');
+        if ($request->filled('status')) $q->where('status', $request->status);
+        $records = $q->paginate(15)->withQueryString();
+        $counts = [
+            'pending' => (int) \App\Models\ReconciliationRecord::whereIn('status', ['submitted', 'under_review'])->count(),
+            'approved' => (int) \App\Models\ReconciliationRecord::whereIn('status', ['approved', 'reviewed', 'reconciled'])->count(),
+            'rejected' => (int) \App\Models\ReconciliationRecord::whereIn('status', ['rejected', 'for_revision', 'revision'])->count(),
+        ];
+        return view('admin.fms.reports.reconciliations', compact('records', 'counts'));
+    }
+
+    public function approveReconciliation(Request $request, \App\Models\ReconciliationRecord $record)
+    {
+        abort_unless(auth()->user()->role === 'admin', 403, 'Only admin can approve.');
+        abort_if(! in_array($record->status, ['submitted', 'under_review', 'draft'], true), 422, 'Only submitted reconciliations can be approved.');
+        $request->validate(['admin_remarks' => 'nullable|string|max:5000']);
+        $record->update(['status' => 'approved', 'reviewed_at' => now(), 'reviewed_by' => auth()->id(), 'admin_remarks' => $request->input('admin_remarks') ?: $record->admin_remarks]);
+        AuditService::log('approve', 'reconciliation_records', (string) $record->id, ['status' => 'submitted'], ['status' => 'approved'], "Admin ".auth()->user()->name." approved Reconciliation {$record->reference_number} — part of official financial records.");
+        \App\Services\WorkflowService::notifyUser($record->prepared_by, "Reconciliation {$record->reference_number} has been approved.", "It is now part of the official financial records.");
+        return back()->with('success', 'Reconciliation approved.');
+    }
+
+    public function rejectReconciliation(Request $request, \App\Models\ReconciliationRecord $record)
+    {
+        abort_unless(auth()->user()->role === 'admin', 403, 'Only admin can reject.');
+        $data = $request->validate(['rejection_reason' => 'required|string|max:5000', 'admin_remarks' => 'nullable|string|max:5000']);
+        abort_if(! in_array($record->status, ['submitted', 'under_review', 'draft'], true), 422, 'Only submitted reconciliations can be rejected.');
+        $record->update(['status' => 'rejected', 'admin_remarks' => trim(($data['admin_remarks'] ?? '').($data['admin_remarks'] ? ' | ' : '').$data['rejection_reason']), 'reviewed_at' => now(), 'reviewed_by' => auth()->id(), 'revision_number' => ((int) $record->revision_number) + 1]);
+        AuditService::log('reject', 'reconciliation_records', (string) $record->id, ['status' => 'submitted'], ['status' => 'rejected'], "Admin ".auth()->user()->name." rejected Reconciliation {$record->reference_number}: {$data['rejection_reason']}");
+        \App\Services\WorkflowService::notifyUser($record->prepared_by, "Reconciliation {$record->reference_number} was rejected. Reason: {$data['rejection_reason']}", "Revise the same record and resubmit.");
+        return back()->with('success', 'Reconciliation rejected and returned for revision.');
     }
 
     /**

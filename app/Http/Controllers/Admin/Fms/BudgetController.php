@@ -15,15 +15,23 @@ class BudgetController extends Controller
 {
     public function index(Request $request)
     {
-        $q = BudgetPlan::query();
+        $q = BudgetPlan::with('items');
         if ($request->filled('search')) {
             $s = $request->search;
-            $q->where(fn($w) => $w->where('budget_name', 'ilike', "%{$s}%")->orWhere('department', 'ilike', "%{$s}%"));
+            $q->where(fn($w) => $w->where('budget_name', 'ilike', "%{$s}%")->orWhere('department', 'ilike', "%{$s}%")->orWhere('budget_category', 'ilike', "%{$s}%"));
         }
         if ($request->filled('status')) $q->where('status', $request->status);
         if ($request->filled('fiscal_year')) $q->where('fiscal_year', $request->fiscal_year);
         $plans = $q->orderBy('created_at', 'desc')->paginate(12)->withQueryString();
-        return view('admin.fms.budgets.index', compact('plans'));
+        $years = BudgetPlan::select('fiscal_year')->distinct()->orderBy('fiscal_year')->pluck('fiscal_year');
+        $counts = [
+            'pending' => (int) BudgetPlan::whereIn('status', ['submitted', 'under_review'])->count(),
+            'approved' => (int) BudgetPlan::whereIn('status', ['approved', 'active'])->count(),
+            'rejected' => (int) BudgetPlan::whereIn('status', ['rejected', 'for_revision', 'revision'])->count(),
+            'all' => (int) BudgetPlan::count(),
+            'total_proposed' => (float) BudgetPlan::sum('allocated_amount'),
+        ];
+        return view('admin.fms.budgets.index', compact('plans', 'counts', 'years'));
     }
 
     public function create()
@@ -44,6 +52,12 @@ class BudgetController extends Controller
             'status' => 'required|in:active,inactive,closed,draft',
             'description' => 'nullable|string|max:5000',
         ]);
+        // Admin-created official budgets must not duplicate an existing official plan.
+        if (in_array($data['status'], BudgetPlan::OFFICIAL, true) && ! empty($data['department'])) {
+            if ($dup = BudgetPlan::officialDuplicateExists($data['department'], $data['fiscal_year'])) {
+                return back()->withErrors(['department' => 'Department "'.$data['department'].'" already has an official budget for '.$data['fiscal_year'].' (BUD-'.$dup->id.'). Review/approve that record instead of creating a duplicate.'])->withInput();
+            }
+        }
         $data['utilized_amount'] = 0;
         $data['created_by'] = auth()->id();
         $plan = BudgetPlan::create($data);
@@ -53,9 +67,10 @@ class BudgetController extends Controller
 
     public function show(BudgetPlan $budget)
     {
-        $budget->load('allocations');
+        $budget->load(['items', 'allocations', 'creator', 'approver', 'submitter', 'reviewer']);
         $allocated = (float) $budget->allocations()->sum('amount');
-        return view('admin.fms.budgets.show', compact('budget', 'allocated'));
+        $history = \App\Models\AuditLog::with('user')->where('module', 'budget_plans')->where('record_id', (string) $budget->id)->latest('id')->take(30)->get();
+        return view('admin.fms.budgets.show', compact('budget', 'allocated', 'history'));
     }
 
     public function edit(BudgetPlan $budget)
@@ -76,6 +91,17 @@ class BudgetController extends Controller
             'status' => 'required|in:active,inactive,closed,draft',
             'description' => 'nullable|string|max:5000',
         ]);
+        // The approved amount is official — it cannot be rewritten through edit once official.
+        if ($budget->isOfficial() && bccomp((string) $data['allocated_amount'], (string) $budget->allocated_amount, 2) !== 0) {
+            abort(422, 'The approved amount of an official budget cannot be changed directly. Adjust through allocations or return the plan for revision.');
+        }
+        // Flipping a plan to official must not create a duplicate either.
+        $resultStatus = $data['status'];
+        if (in_array($resultStatus, BudgetPlan::OFFICIAL, true) && ! empty($data['department'])) {
+            if ($dup = BudgetPlan::officialDuplicateExists($data['department'], $data['fiscal_year'], $budget->id)) {
+                return back()->withErrors(['department' => 'Department "'.$data['department'].'" already has an official budget for '.$data['fiscal_year'].' (BUD-'.$dup->id.').'])->withInput();
+            }
+        }
         $old = $budget->toArray();
         $budget->update($data);
         AuditService::log('update', 'budget_plans', (string) $budget->id, $old, $budget->fresh()->toArray(), "Admin ".auth()->user()->name." updated Budget Plan #{$budget->id}.");
@@ -88,6 +114,65 @@ class BudgetController extends Controller
         $budget->delete();
         AuditService::log('delete', 'budget_plans', (string) $budget->id, $old, null, "Admin ".auth()->user()->name." deleted Budget Plan #{$budget->id}.");
         return redirect()->route('admin.budgets.index')->with('success', 'Budget plan deleted.');
+    }
+
+    /** Approve a submitted budget plan — same record, submitted → approved. */
+    public function approve(Request $request, BudgetPlan $budget)
+    {
+        abort_unless(auth()->user()->role === 'admin', 403, 'Only admin can approve.');
+        abort_if(! in_array($budget->status, ['submitted', 'under_review'], true), 422, 'Only submitted plans can be approved.');
+        $request->validate(['admin_remarks' => 'nullable|string|max:5000']);
+        // Approving must not crown a second official budget for the same department + year.
+        if ($dup = BudgetPlan::officialDuplicateExists($budget->department, $budget->fiscal_year, $budget->id)) {
+            abort(422, 'Department "'.$budget->department.'" already has an official budget for '.$budget->fiscal_year.' (BUD-'.$dup->id.'). Resolve the duplicate first.');
+        }
+        $old = $budget->toArray();
+        DB::transaction(fn() => $budget->update([
+            'status' => 'approved', 'reviewed_at' => now(), 'reviewed_by' => auth()->id(),
+            'approved_by' => auth()->id(), 'approved_at' => now(),
+            'admin_remarks' => $request->input('admin_remarks') ?: $budget->admin_remarks,
+        ]));
+        AuditService::log('approve', 'budget_plans', (string) $budget->id, ['status' => $old['status']], ['status' => 'approved'], "Admin ".auth()->user()->name." approved Budget Plan BUD-{$budget->id} ({$budget->budget_name}) — now in Budget Planning Overview as approved.");
+        \App\Services\WorkflowService::notifyUser($budget->created_by, "Budget Plan BUD-{$budget->id} has been approved.", "Budget Plan '{$budget->budget_name}' was approved and is now available in the overview.");
+        return back()->with('success', 'Budget plan approved. It is now visible as approved in both Admin and Accountant modules.');
+    }
+
+    /** Reject a submitted budget plan — same record, submitted → rejected (reason required). */
+    public function reject(Request $request, BudgetPlan $budget)
+    {
+        abort_unless(auth()->user()->role === 'admin', 403, 'Only admin can reject.');
+        $data = $request->validate(['rejection_reason' => 'required|string|max:5000', 'admin_remarks' => 'nullable|string|max:5000']);
+        abort_if(! in_array($budget->status, ['submitted', 'under_review'], true), 422, 'Only submitted plans can be rejected.');
+        $old = $budget->toArray();
+        DB::transaction(fn() => $budget->update([
+            'status' => 'rejected', 'rejection_reason' => $data['rejection_reason'],
+            'admin_remarks' => $data['admin_remarks'] ?? $budget->admin_remarks,
+            'reviewed_at' => now(), 'reviewed_by' => auth()->id(),
+            'approved_by' => null, 'approved_at' => null,
+            'revision_number' => ((int) $budget->revision_number) + 1,
+        ]));
+        AuditService::log('reject', 'budget_plans', (string) $budget->id, ['status' => $old['status']], ['status' => 'rejected'], "Admin ".auth()->user()->name." rejected Budget Plan BUD-{$budget->id}: {$data['rejection_reason']}");
+        \App\Services\WorkflowService::notifyUser($budget->created_by, "Budget Plan BUD-{$budget->id} was rejected. Reason: {$data['rejection_reason']}", "Revise the same record and resubmit from Budget Planning.");
+        return back()->with('success', 'Budget plan rejected and returned to Accountant for revision.');
+    }
+
+    /** Return for revision — same record, submitted → for_revision (admin comment required). */
+    public function forRevision(Request $request, BudgetPlan $budget)
+    {
+        abort_unless(auth()->user()->role === 'admin', 403, 'Only admin can return plans.');
+        $data = $request->validate(['admin_remarks' => 'required|string|max:5000']);
+        abort_if(! in_array($budget->status, ['submitted', 'under_review'], true), 422, 'Only submitted plans can be returned for revision.');
+        $old = $budget->toArray();
+        DB::transaction(fn() => $budget->update([
+            'status' => 'for_revision',
+            'admin_remarks' => $data['admin_remarks'],
+            'reviewed_at' => now(), 'reviewed_by' => auth()->id(),
+            'approved_by' => null, 'approved_at' => null,
+            'revision_number' => ((int) $budget->revision_number) + 1,
+        ]));
+        AuditService::log('revise', 'budget_plans', (string) $budget->id, ['status' => $old['status']], ['status' => 'for_revision'], "Admin ".auth()->user()->name." returned Budget Plan BUD-{$budget->id} for revision: {$data['admin_remarks']}");
+        \App\Services\WorkflowService::notifyUser($budget->created_by, "Budget Plan BUD-{$budget->id} was returned for revision.", "Admin comment: {$data['admin_remarks']}");
+        return back()->with('success', 'Budget plan returned to Accountant for revision.');
     }
 
     public function allocate(Request $request, BudgetPlan $budget)

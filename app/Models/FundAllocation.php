@@ -8,7 +8,10 @@ class FundAllocation extends Model
 {
     protected $fillable = [
         'fund_id', 'budget_plan_id', 'allocated_to', 'amount',
-        'allocation_date', 'status', 'remarks', 'created_by',
+        'allocation_date', 'status', 'purpose', 'description',
+        'supporting_document', 'remarks', 'rejection_reason', 'admin_remarks',
+        'submitted_at', 'submitted_by', 'reviewed_at', 'reviewed_by',
+        'approved_by', 'approved_at', 'revision_number', 'cancelled_at', 'created_by',
     ];
 
     protected $casts = [

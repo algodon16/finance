@@ -4,6 +4,13 @@ namespace App\Http\Controllers\Accountant;
 
 use App\Http\Controllers\Controller;
 use App\Models\AccountLedger;
+use App\Models\AccountsPayable;
+use App\Models\AuditLog;
+use App\Models\BudgetPlan;
+use App\Models\Expense;
+use App\Models\FinancialRequest;
+use App\Models\Fund;
+use App\Models\FundAllocation;
 use App\Models\Payment;
 use App\Models\StudentAccount;
 
@@ -78,6 +85,61 @@ class DashboardController extends Controller
             ];
         });
 
+        // Submission workflow aggregates (real DB values).
+        $pendingBudget = BudgetPlan::whereIn('status', ['submitted', 'under_review'])->count();
+        $pendingAlloc = FundAllocation::whereIn('status', ['submitted', 'under_review'])->count();
+        $pendingExpense = Expense::whereIn('approval_status', ['submitted', 'under_review'])->count();
+        $pendingPayable = AccountsPayable::whereIn('approval_status', ['submitted', 'under_review'])->count();
+        $pendingRequest = FinancialRequest::whereIn('status', ['submitted', 'under_review'])->count();
+        $pendingApproval = $pendingBudget + $pendingAlloc + $pendingExpense + $pendingPayable + $pendingRequest;
+
+        $approvedPlans = BudgetPlan::whereIn('status', ['approved', 'active'])->count()
+            + FundAllocation::where('status', 'approved')->count()
+            + Expense::financiallyActive()->where('approval_status', 'approved')->count()
+            + AccountsPayable::where('approval_status', 'approved')->count()
+            + FinancialRequest::whereIn('status', ['approved', 'completed'])->count();
+
+        $rejectedPlans = BudgetPlan::whereIn('status', ['for_revision', 'revision', 'rejected'])->count()
+            + FundAllocation::whereIn('status', ['for_revision', 'revision', 'rejected'])->count()
+            + Expense::whereIn('approval_status', ['for_revision', 'revision', 'rejected'])->count()
+            + AccountsPayable::whereIn('approval_status', ['for_revision', 'revision', 'rejected'])->count()
+            + FinancialRequest::whereIn('status', ['for_revision', 'revision', 'rejected'])->count();
+
+        $totalBudgetProposals = BudgetPlan::count();
+        $totalExpenseProposals = Expense::count();
+
+        $pendingBreakdown = [
+            ['label' => 'Budget proposals', 'count' => $pendingBudget, 'route' => 'accountant.budgets.index'],
+            ['label' => 'Fund allocations', 'count' => $pendingAlloc, 'route' => 'accountant.fund-allocations.index'],
+            ['label' => 'Expense proposals', 'count' => $pendingExpense, 'route' => 'accountant.expenses.index'],
+            ['label' => 'Accounts payable', 'count' => $pendingPayable, 'route' => 'accountant.payables.index'],
+            ['label' => 'Financial requests', 'count' => $pendingRequest, 'route' => 'accountant.financial-requests.index'],
+        ];
+
+        $recentSubmissions = BudgetPlan::whereIn('status', ['submitted', 'under_review'])->latest('submitted_at')->take(3)->get()
+            ->map(fn($r) => (object) ['type' => 'Budget', 'desc' => $r->budget_name, 'amount' => $r->allocated_amount, 'date' => $r->submitted_at, 'status' => $r->status]);
+        $recentApproved = BudgetPlan::whereIn('status', ['approved', 'active'])->latest('approved_at')->take(3)->get()
+            ->map(fn($r) => (object) ['type' => 'Budget', 'desc' => $r->budget_name, 'amount' => $r->allocated_amount, 'date' => $r->approved_at, 'status' => $r->status]);
+        $recentRejected = BudgetPlan::whereIn('status', ['for_revision', 'revision', 'rejected'])->latest('reviewed_at')->take(3)->get()
+            ->map(fn($r) => (object) ['type' => 'Budget', 'desc' => $r->budget_name, 'amount' => $r->allocated_amount, 'date' => $r->reviewed_at, 'status' => $r->status]);
+
+        $recentAudits = AuditLog::with('user')->latest('id')->take(8)->get();
+
+        // Financial planning aggregates.
+        $availableFunds = (float) Fund::where('status', 'active')->get()->sum(fn($f) => (float) $f->available_amount);
+        $approvedBudget = (float) BudgetPlan::whereIn('status', ['approved', 'active'])->sum('allocated_amount');
+        $allocatedFunds = (float) FundAllocation::where('status', 'approved')->sum('amount');
+        $budgetUtilized = (float) BudgetPlan::whereIn('status', ['approved', 'active'])->sum('utilized_amount');
+        $remainingBudget = $approvedBudget - $budgetUtilized;
+
+        $budgetUtilization = BudgetPlan::whereIn('status', ['approved', 'active'])
+            ->orderByDesc('allocated_amount')->take(6)->get();
+        $fundOverview = Fund::where('status', 'active')->orderByDesc('current_balance')->take(6)->get();
+        $expenseSummary = Expense::where('approval_status', 'approved')->orderByDesc('approved_at')->take(5)->get();
+        $payableSummary = AccountsPayable::orderByDesc('created_at')->take(5)->get();
+        $recentApprovedPlans = BudgetPlan::whereIn('status', ['approved', 'active'])->latest('approved_at')->take(4)->get();
+        $recentRejectedPlans = BudgetPlan::whereIn('status', ['for_revision', 'revision', 'rejected'])->latest('reviewed_at')->take(4)->get();
+
         return view('accountant.dashboard', compact(
             'totalCollections',
             'outstandingBalance',
@@ -85,7 +147,27 @@ class DashboardController extends Controller
             'unreconciledCount',
             'recentTransactions',
             'outstandingByProgram',
-            'reconciliationSummary'
+            'reconciliationSummary',
+            'pendingApproval',
+            'approvedPlans',
+            'rejectedPlans',
+            'totalBudgetProposals',
+            'totalExpenseProposals',
+            'pendingBreakdown',
+            'recentSubmissions',
+            'recentApproved',
+            'recentRejected',
+            'recentAudits',
+            'availableFunds',
+            'approvedBudget',
+            'allocatedFunds',
+            'remainingBudget',
+            'budgetUtilization',
+            'fundOverview',
+            'expenseSummary',
+            'payableSummary',
+            'recentApprovedPlans',
+            'recentRejectedPlans'
         ));
     }
 }

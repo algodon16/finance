@@ -6,14 +6,14 @@ use Closure;
 use Illuminate\Http\Request;
 
 /**
- * 5-minute activity timeout for stateless Sanctum API tokens.
+ * 8-hour activity timeout for stateless Sanctum API tokens.
  * The token's last_used_at is touched on every fresh request, so the
- * window slides with activity; idle tokens older than 5 minutes are
+ * window slides with activity; idle tokens older than 8 hours are
  * rejected with 401 and must re-authenticate (including OTP).
  */
 class EnsureApiFresh
 {
-    public const TIMEOUT_SECONDS = 300;
+    public const TIMEOUT_SECONDS = 28800;
 
     public function handle(Request $request, Closure $next)
     {

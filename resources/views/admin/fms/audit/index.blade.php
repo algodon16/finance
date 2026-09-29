@@ -3,14 +3,25 @@
 @section('content')
 <div class="page-header"><h2>Security and Audit Trail</h2></div>
 <div class="fms-panel no-print">
-    <form method="GET" style="display:flex;gap:10px;flex-wrap:wrap;">
-        <input type="text" name="search" class="form-control" style="max-width:240px;" placeholder="Search action, module, record" value="{{ request('search') }}">
-        <select name="module" class="form-control" style="max-width:200px;"><option value="">All modules</option>@foreach($modules as $m)<option value="{{ $m }}" {{ request('module') === $m ? 'selected' : '' }}>{{ $m }}</option>@endforeach</select>
-        <select name="action" class="form-control" style="max-width:180px;"><option value="">All actions</option>@foreach($actions as $a)<option value="{{ $a }}" {{ request('action') === $a ? 'selected' : '' }}>{{ $a }}</option>@endforeach</select>
-        <input type="date" name="date_from" class="form-control" style="max-width:170px;" value="{{ request('date_from') }}">
-        <input type="date" name="date_to" class="form-control" style="max-width:170px;" value="{{ request('date_to') }}">
-        <button class="btn btn-secondary" type="submit">Filter</button>
-        <a class="btn btn-secondary" href="{{ route('admin.audit.index') }}">Reset</a>
+    <form method="GET" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+        <div><label style="font-size:0.8rem;">Search</label><br><input type="text" name="search" class="form-control" style="width:200px;" placeholder="Search action, module, record" value="{{ request('search') }}"></div>
+        <div><label style="font-size:0.8rem;">Module</label><br>
+        <select name="module" class="form-control" style="min-width:160px;">
+            <option value="">All modules</option>
+            @foreach($modules as $m)
+                <option value="{{ $m }}" {{ request('module') === $m ? 'selected' : '' }}>{{ $m }}</option>
+            @endforeach
+        </select></div>
+        <div><label style="font-size:0.8rem;">Action</label><br>
+        <select name="action" class="form-control" style="min-width:160px;">
+            <option value="">All actions</option>
+            @foreach($actions as $a)
+                <option value="{{ $a }}" {{ request('action') === $a ? 'selected' : '' }}>{{ $a }}</option>
+            @endforeach
+        </select></div>
+        <div><label style="font-size:0.8rem;">Date From</label><br><input type="date" name="date_from" class="form-control" value="{{ request('date_from') }}"></div>
+        <div><label style="font-size:0.8rem;">Date To</label><br><input type="date" name="date_to" class="form-control" value="{{ request('date_to') }}"></div>
+        <div><button class="btn btn-secondary" type="submit">Filter</button> <a class="btn btn-secondary" href="{{ route('admin.audit.index') }}">Reset</a></div>
     </form>
 </div>
 <div class="fms-panel">

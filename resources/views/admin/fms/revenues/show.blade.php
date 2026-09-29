@@ -21,8 +21,9 @@
         <tr><td style="color:#64748b;">Description</td><td>{{ $record->description ?? '—' }}</td></tr>
     </tbody></table>
     <div class="form-actions">
+        <form method="POST" action="{{ route('admin.revenues.approve', $record) }}">@csrf<button class="btn btn-success" type="submit" onclick="return confirm('Approve this submitted payment? Same record will be updated.');">Approve</button></form>
         <form method="POST" action="{{ route('admin.revenues.verify', $record) }}">@csrf<button class="btn btn-success" type="submit" onclick="return confirm('Verify this payment?');">Verify</button></form>
-        <form method="POST" action="{{ route('admin.revenues.reject', $record) }}">@csrf<button class="btn btn-danger" type="submit" onclick="return confirm('Reject this payment?');">Reject</button></form>
+        <form method="POST" action="{{ route('admin.revenues.reject', $record) }}">@csrf<input type="text" name="rejection_reason" class="form-control" placeholder="Rejection reason (required for reject)" style="margin-bottom:8px;"><button class="btn btn-danger" type="submit" onclick="return confirm('Reject this payment?');">Reject</button></form>
         <form method="POST" action="{{ route('admin.revenues.reconcile', $record) }}">@csrf<button class="btn btn-success" type="submit" onclick="return confirm('Mark this payment reconciled?');">Reconcile</button></form>
     </div>
 </div>

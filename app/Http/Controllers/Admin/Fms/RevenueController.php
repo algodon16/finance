@@ -113,23 +113,53 @@ class RevenueController extends Controller
         $old = $revenue->toArray();
         DB::transaction(function () use ($revenue, $data) {
             $revenue->update($data);
+            \App\Models\AccountReceivable::resyncPayment($revenue->fresh());
             $this->syncStudentAccount($revenue->student_id);
         });
         AuditService::log('update', 'revenues', (string) $revenue->id, $old, $revenue->fresh()->toArray(), "Admin ".auth()->user()->name." updated Revenue Transaction #{$revenue->transaction_number}.");
         return redirect()->route('admin.revenues.show', $revenue)->with('success', 'Payment updated.');
     }
 
-    public function setStatus(Payment $revenue, string $action)
+    public function setStatus(Request $request, Payment $revenue, string $action)
     {
-        abort_unless(in_array($action, ['verify', 'reject', 'reconcile']), 404);
-        $map = ['verify' => ['status' => 'verified', 'verification_status' => 'verified'], 'reject' => ['status' => 'rejected', 'verification_status' => 'rejected'], 'reconcile' => ['status' => 'verified', 'verification_status' => 'reconciled']];
+        abort_unless(auth()->user()->role === 'admin', 403, 'Only admin can approve.');
+        abort_unless(in_array($action, ['verify', 'reject', 'reconcile', 'approve']), 404);
+        if ($action === 'reject') $request->validate(['rejection_reason' => 'required|string|max:5000']);
+        $map = ['verify' => ['status' => 'verified', 'verification_status' => 'verified'], 'reject' => ['status' => 'rejected', 'verification_status' => 'rejected'], 'reconcile' => ['status' => 'verified', 'verification_status' => 'reconciled'], 'approve' => ['status' => 'approved', 'verification_status' => 'verified']];
+        if ($action === 'approve') {
+            abort_if(! in_array($revenue->status, ['pending', 'under_review', 'submitted', 'verified'], true), 422, 'Only pending/submitted payments can be approved.');
+        }
         $old = $revenue->toArray();
-        DB::transaction(function () use ($revenue, $map, $action) {
-            $revenue->update($map[$action] + ['reviewed_by' => auth()->id(), 'reviewed_at' => now()] + ($action === 'reconcile' ? ['reconciled_at' => now()] : []));
+        DB::transaction(function () use ($request, $revenue, $map, $action) {
+            $patch = $map[$action] + ['reviewed_by' => auth()->id(), 'reviewed_at' => now()] + ($action === 'reconcile' ? ['reconciled_at' => now()] : []);
+            if ($action === 'reject') {
+                $patch['rejection_reason'] = $request->input('rejection_reason');
+                $patch['admin_remarks'] = $request->input('admin_remarks');
+            }
+            if ($action === 'approve') {
+                $patch['admin_remarks'] = $request->input('admin_remarks') ?? $revenue->admin_remarks;
+            }
+            $revenue->update($patch);
+            if (in_array($action, ['verify', 'approve', 'reconcile'])) {
+                // Same record updated — post ledger + sync student balance.
+                $account = \App\Models\StudentAccount::firstOrCreate(['student_id' => $revenue->student_id]);
+                $exists = \App\Models\AccountLedger::where('payment_id', $revenue->id)->exists();
+                if (! $exists) {
+                    \App\Models\AccountLedger::create([
+                        'student_id' => $revenue->student_id, 'transaction_date' => $revenue->payment_date ?? today(),
+                        'reference_number' => $revenue->reference_number ?? ('PAY-'.$revenue->id),
+                        'description' => $revenue->description ?? 'Payment approved',
+                        'debit' => 0, 'credit' => $revenue->amount,
+                        'balance' => max(0, (float) $account->outstanding_balance - (float) $revenue->amount),
+                        'payment_id' => $revenue->id,
+                    ]);
+                }
+            }
+            \App\Models\AccountReceivable::resyncPayment($revenue->fresh());
             $this->syncStudentAccount($revenue->student_id);
         });
-        AuditService::log($action, 'revenues', (string) $revenue->id, $old, null, "Admin ".auth()->user()->name." {$action}d Revenue Transaction #{$revenue->transaction_number}.");
-        return back()->with('success', 'Payment '.$action.'d.');
+        AuditService::log($action, 'revenues', (string) $revenue->id, ['status' => $old['status']], ['status' => $map[$action]['status']], "Admin ".auth()->user()->name." {$action}d Revenue Transaction #".($revenue->transaction_number ?? $revenue->id).".");
+        return back()->with('success', 'Payment '.$action.'d. Same record updated — no duplicate created.');
     }
 
     public function export(Request $request)

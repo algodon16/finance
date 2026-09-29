@@ -14,6 +14,20 @@
 </div>
 
 <div class="fms-panel">
+    <h3>Accounts Receivable Ledger</h3>
+    <table class="fms-table">
+        <thead><tr><th>Ref No.</th><th>Description</th><th style="text-align:right;">Billed</th><th style="text-align:right;">Paid</th><th style="text-align:right;">Balance</th><th>Due Date</th><th>Status</th></tr></thead>
+        <tbody>
+        @forelse($receivables ?? [] as $ar)
+            <tr><td><strong>{{ $ar->reference_number }}</strong></td><td>{{ $ar->description ?? '—' }}</td><td style="text-align:right;">P{{ number_format((float) $ar->billed_amount, 2) }}</td><td style="text-align:right;">P{{ number_format((float) $ar->paid_amount, 2) }}</td><td style="text-align:right;font-weight:700;">P{{ number_format((float) $ar->balance, 2) }}</td><td>{{ $ar->due_date ? $ar->due_date->format('M d, Y') : '—' }}</td><td><span class="status">{{ ucfirst($ar->status) }}{{ $ar->isOverdue() ? ' (Overdue)' : '' }}</span></td></tr>
+        @empty
+            <tr><td colspan="7" style="color:#64748b;">No receivables found.</td></tr>
+        @endforelse
+        </tbody>
+    </table>
+</div>
+
+<div class="fms-panel">
     <h3>Payment History</h3>
     <table class="fms-table">
         <thead><tr><th>Date</th><th>Transaction</th><th>Method</th><th style="text-align:right;">Amount</th><th>Status</th></tr></thead>

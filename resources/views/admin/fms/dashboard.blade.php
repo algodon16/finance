@@ -37,6 +37,20 @@
     </a>
 </div>
 
+<div class="fms-panel">
+    <h3>Pending Approvals by Module (same records Accountant submitted)</h3>
+    <div class="fms-stat-grid">
+        <a href="{{ route('admin.budgets.index', ['status' => 'submitted']) }}" class="fms-stat fms-stat-link"><h4>Pending Budget Plans</h4><p class="val">{{ $pendingBudgets ?? 0 }}</p></a>
+        <a href="{{ route('admin.funds.index') }}" class="fms-stat fms-stat-link"><h4>Pending Fund Allocations</h4><p class="val">{{ $pendingAllocations ?? 0 }}</p></a>
+        <a href="{{ route('admin.expenses.index', ['approval_status' => 'submitted']) }}" class="fms-stat fms-stat-link"><h4>Pending Expenses</h4><p class="val">{{ $pendingExpenses ?? 0 }}</p></a>
+        <a href="{{ route('admin.payables.index', ['approval_status' => 'submitted']) }}" class="fms-stat fms-stat-link"><h4>Pending Payables</h4><p class="val">{{ $pendingPayables ?? 0 }}</p></a>
+        <a href="{{ route('admin.financial-requests.index', ['status' => 'submitted']) }}" class="fms-stat fms-stat-link"><h4>Pending Financial Requests</h4><p class="val">{{ $pendingFinancialRequests ?? 0 }}</p></a>
+        <a href="{{ route('admin.reports.reconciliations', ['status' => 'submitted']) }}" class="fms-stat fms-stat-link"><h4>Pending Reconciliations</h4><p class="val">{{ $pendingReconciliations ?? 0 }}</p></a>
+        <a href="{{ route('admin.budgets.index', ['status' => 'approved']) }}" class="fms-stat fms-stat-link"><h4>Approved Plans</h4><p class="val">{{ $approvedPlans ?? 0 }}</p></a>
+        <a href="{{ route('admin.budgets.index', ['status' => 'rejected']) }}" class="fms-stat fms-stat-link"><h4>Rejected</h4><p class="val">{{ $rejectedCount ?? 0 }}</p></a>
+    </div>
+</div>
+
 <div class="fms-analytics-grid">
     <div class="fms-panel fms-chart-card">
         <h3>Revenue Trend (Last 6 Months)</h3>

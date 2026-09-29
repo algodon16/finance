@@ -1,21 +1,25 @@
 @extends('layouts.app')
 
-@section('title', 'Financial Reports')
+@section('title', 'Financial Reporting and Compliance')
 
 @section('content')
 <div class="page-header">
     <div>
-        <h2>Financial Reports</h2>
-        <p class="page-subtitle">Generate and review financial reports.</p>
+        <h2>Financial Reporting and Compliance</h2>
+        <p class="page-subtitle">Generate and review financial reports. Reconciliation lives in this module.</p>
     </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+    <a href="{{ route('accountant.reconciliation.index') }}" class="btn btn-secondary">Reconciliation</a>
+    <a href="{{ route('accountant.reconciliation-records.index') }}" class="btn btn-secondary">Reconciliation Records</a>
     <span class="dash-datetime">{{ now()->format('M d, Y h:i A') }}</span>
+    </div>
 </div>
 
 <div class="filter-bar">
-    <form method="GET" action="{{ route('accountant.financial-reports.index') }}" class="filter-form" id="reportForm">
+    <form method="GET" action="{{ route('accountant.financial-reports.index') }}" class="filter-form" id="reportForm" style="align-items:flex-end;">
         <div class="filter-rows">
             <div class="filter-row">
-                <div class="form-group report-type-group">
+                <div class="form-group report-type-group" style="flex:0 1 220px;min-width:180px;">
                     <label for="report_type">Report Type</label>
                     <select name="report_type" id="report_type" class="form-control" required>
                         <option value="">Select Report</option>
@@ -27,15 +31,15 @@
                         <option value="reconciliation" {{ request('report_type') === 'reconciliation' ? 'selected' : '' }}>Reconciliation Report</option>
                     </select>
                 </div>
-                <div class="form-group">
+                <div class="form-group" style="min-width:150px;">
                     <label for="date_from">Date From</label>
                     <input type="date" name="date_from" id="date_from" value="{{ request('date_from') }}" class="form-control">
                 </div>
-                <div class="form-group">
+                <div class="form-group" style="min-width:150px;">
                     <label for="date_to">Date To</label>
                     <input type="date" name="date_to" id="date_to" value="{{ request('date_to') }}" class="form-control">
                 </div>
-                <div class="form-group">
+                <div class="form-group" style="min-width:160px;">
                     <label for="program">Program</label>
                     <select name="program" id="program" class="form-control">
                         <option value="">All Programs</option>
@@ -46,7 +50,7 @@
                 </div>
             </div>
             <div class="filter-row">
-                <div class="form-group">
+                <div class="form-group" style="min-width:150px;">
                     <label for="year_level">Year Level</label>
                     <select name="year_level" id="year_level" class="form-control">
                         <option value="">All Year Levels</option>
@@ -55,7 +59,7 @@
                         @endforeach
                     </select>
                 </div>
-                <div class="form-group">
+                <div class="form-group" style="min-width:150px;">
                     <label for="semester_id">Semester</label>
                     <select name="semester_id" id="semester_id" class="form-control">
                         <option value="">All Semesters</option>
@@ -64,7 +68,7 @@
                         @endforeach
                     </select>
                 </div>
-                <div class="form-group">
+                <div class="form-group" style="min-width:150px;">
                     <label for="academic_year_id">Academic Year</label>
                     <select name="academic_year_id" id="academic_year_id" class="form-control">
                         <option value="">All Years</option>
@@ -73,7 +77,7 @@
                         @endforeach
                     </select>
                 </div>
-                <div class="form-group">
+                <div class="form-group" style="min-width:150px;">
                     <label for="payment_method">Payment Method</label>
                     <select name="payment_method" id="payment_method" class="form-control">
                         <option value="">All Methods</option>
@@ -84,8 +88,8 @@
                 </div>
             </div>
         </div>
-        <div class="filter-actions-row">
-            <button type="submit" class="btn btn-primary">Generate Report</button>
+        <div style="display:flex;gap:8px;">
+            <button type="submit" class="btn btn-secondary">Generate Report</button>
             <a href="{{ route('accountant.financial-reports.index') }}" class="btn btn-secondary">Clear</a>
         </div>
     </form>

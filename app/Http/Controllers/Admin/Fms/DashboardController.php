@@ -29,7 +29,7 @@ class DashboardController extends Controller
               ->orWhere('verification_status', 'reconciled');
         })->sum('amount');
 
-        $totalExpenses = (float) Expense::where('approval_status', 'approved')->sum('amount');
+        $totalExpenses = (float) Expense::financiallyActive()->where('approval_status', 'approved')->sum('amount');
 
         $totalAssessed = (float) StudentAccount::sum('total_charges');
         $totalCollectedAr = (float) StudentAccount::sum('total_paid');
@@ -41,7 +41,19 @@ class DashboardController extends Controller
 
         $availableFunds = (float) Fund::where('status', 'active')->sum('current_balance');
         $outstandingBalances = (float) StudentAccount::where('outstanding_balance', '>', 0)->sum('outstanding_balance');
-        $pendingRequests = ProcurementRequest::whereIn('status', ['submitted', 'under_review', 'pending'])->count();
+        $pendingRequests = ProcurementRequest::whereIn('status', ['submitted', 'under_review', 'pending'])->count()
+            + \App\Models\FinancialRequest::whereIn('status', ['submitted', 'under_review'])->count();
+        $pendingBudgets = (int) BudgetPlan::whereIn('status', ['submitted', 'under_review'])->count();
+        $pendingAllocations = (int) \App\Models\FundAllocation::whereIn('status', ['submitted', 'under_review'])->count();
+        $pendingExpenses = (int) Expense::whereIn('approval_status', ['submitted', 'under_review'])->count();
+        $pendingPayables = (int) AccountsPayable::whereIn('approval_status', ['submitted', 'under_review'])->count();
+        $pendingFinancialRequests = (int) \App\Models\FinancialRequest::whereIn('status', ['submitted', 'under_review'])->count();
+        $pendingReconciliations = (int) \App\Models\ReconciliationRecord::whereIn('status', ['submitted', 'under_review'])->count();
+        $approvedPlans = (int) BudgetPlan::whereIn('status', ['approved', 'active'])->count()
+            + (int) Expense::financiallyActive()->where('approval_status', 'approved')->count();
+        $rejectedCount = (int) BudgetPlan::whereIn('status', ['rejected', 'for_revision', 'revision'])->count()
+            + (int) Expense::whereIn('approval_status', ['rejected', 'for_revision', 'revision'])->count()
+            + (int) AccountsPayable::whereIn('approval_status', ['rejected', 'for_revision', 'revision'])->count();
         $assetValue = 0.0;
         foreach (Asset::where('asset_status', 'active')->get() as $a) {
             $assetValue += (float) $a->book_value;
@@ -70,7 +82,7 @@ class DashboardController extends Controller
             if (array_key_exists($k, $revByMonth)) $revByMonth[$k] += (float) $row->amount;
         }
 
-        $expRows = Expense::whereBetween('expense_date', [$startDate->toDateString(), $endDate->toDateString()])
+        $expRows = Expense::financiallyActive()->whereBetween('expense_date', [$startDate->toDateString(), $endDate->toDateString()])
             ->where('approval_status', 'approved')
             ->get(['expense_date', 'amount']);
         $expByMonth = array_fill_keys($monthKeys, 0.0);
@@ -110,6 +122,8 @@ class DashboardController extends Controller
         return view('admin.fms.dashboard', compact(
             'totalRevenue', 'totalExpenses', 'accountsReceivable', 'accountsPayable',
             'availableFunds', 'outstandingBalances', 'pendingRequests',
+            'pendingBudgets', 'pendingAllocations', 'pendingExpenses', 'pendingPayables',
+            'pendingFinancialRequests', 'pendingReconciliations', 'approvedPlans', 'rejectedCount',
             'assetValue', 'assetAcquisition', 'revTrend', 'expTrend',
             'recentPayments', 'recentExpenses', 'budgetUtil', 'fundAlloc',
             'revenueLabels', 'revenueFullLabels', 'revenueData',

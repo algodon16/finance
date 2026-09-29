@@ -10,14 +10,30 @@ class Asset extends Model
         'asset_code', 'asset_name', 'asset_category', 'serial_number',
         'acquisition_date', 'acquisition_cost', 'salvage_value',
         'useful_life_years', 'location', 'department', 'custodian',
-        'asset_status', 'remarks', 'created_by',
+        'asset_status', 'approval_status', 'rejection_reason', 'admin_remarks',
+        'submitted_at', 'submitted_by', 'reviewed_at', 'reviewed_by',
+        'approved_by', 'approved_at', 'revision_number', 'cancelled_at',
+        'supporting_document', 'remarks', 'created_by',
     ];
 
     protected $casts = [
         'acquisition_date' => 'date',
         'acquisition_cost' => 'decimal:2',
         'salvage_value' => 'decimal:2',
+        'submitted_at' => 'datetime',
+        'reviewed_at' => 'datetime',
+        'approved_at' => 'datetime',
     ];
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function approver()
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
 
     /** Straight-line: annual = (cost - salvage) / useful life. Server-side only. */
     public function getAnnualDepreciationAttribute(): string

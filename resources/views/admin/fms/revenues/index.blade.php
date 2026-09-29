@@ -28,14 +28,25 @@
 </div>
 
 <div class="fms-panel no-print">
-    <form method="GET" style="display:flex;gap:10px;flex-wrap:wrap;">
-        <input type="text" name="search" class="form-control" style="max-width:240px;" placeholder="Search student, TRX, reference" value="{{ request('search') }}">
-        <select name="status" class="form-control" style="max-width:150px;"><option value="">All status</option>@foreach(['pending','approved','verified','rejected'] as $s)<option value="{{ $s }}" {{ request('status') === $s ? 'selected' : '' }}>{{ ucfirst($s) }}</option>@endforeach</select>
-        <select name="verification_status" class="form-control" style="max-width:170px;"><option value="">All verification</option>@foreach(['pending','verified','rejected','reconciled'] as $s)<option value="{{ $s }}" {{ request('verification_status') === $s ? 'selected' : '' }}>{{ ucfirst($s) }}</option>@endforeach</select>
-        <input type="date" name="date_from" class="form-control" style="max-width:170px;" value="{{ request('date_from') }}">
-        <input type="date" name="date_to" class="form-control" style="max-width:170px;" value="{{ request('date_to') }}">
-        <button class="btn btn-secondary" type="submit">Filter</button>
-        <a class="btn btn-secondary" href="{{ route('admin.revenues.index') }}">Reset</a>
+    <form method="GET" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+        <div><label style="font-size:0.8rem;">Search</label><br><input type="text" name="search" class="form-control" style="width:200px;" placeholder="Search student, TRX, reference" value="{{ request('search') }}"></div>
+        <div><label style="font-size:0.8rem;">Status</label><br>
+        <select name="status" class="form-control" style="min-width:160px;">
+            <option value="">All status</option>
+            @foreach(['pending' => 'Pending', 'approved' => 'Approved', 'verified' => 'Verified', 'rejected' => 'Rejected'] as $s => $label)
+                <option value="{{ $s }}" {{ request('status') === $s ? 'selected' : '' }}>{{ $label }}</option>
+            @endforeach
+        </select></div>
+        <div><label style="font-size:0.8rem;">Verification</label><br>
+        <select name="verification_status" class="form-control" style="min-width:160px;">
+            <option value="">All verification</option>
+            @foreach(['pending' => 'Pending', 'verified' => 'Verified', 'rejected' => 'Rejected', 'reconciled' => 'Reconciled'] as $s => $label)
+                <option value="{{ $s }}" {{ request('verification_status') === $s ? 'selected' : '' }}>{{ $label }}</option>
+            @endforeach
+        </select></div>
+        <div><label style="font-size:0.8rem;">Date From</label><br><input type="date" name="date_from" class="form-control" value="{{ request('date_from') }}"></div>
+        <div><label style="font-size:0.8rem;">Date To</label><br><input type="date" name="date_to" class="form-control" value="{{ request('date_to') }}"></div>
+        <div><button class="btn btn-secondary" type="submit">Filter</button> <a class="btn btn-secondary" href="{{ route('admin.revenues.index') }}">Reset</a></div>
     </form>
 </div>
 

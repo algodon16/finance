@@ -17,6 +17,33 @@
 </div>
 
 <div class="fms-panel">
+    <h3>Approval — same record (submitted → approved / rejected)</h3>
+    <p style="color:#64748b;">Approval: <span class="status">{{ \App\Services\WorkflowService::label($record->approval_status ?? 'draft') }}</span> | Prepared by {{ $record->creator->name ?? '—' }} | Submitted {{ $record->submitted_at?->format('M d, Y h:i A') ?? '—' }} | Revision {{ $record->revision_number ?? 0 }}</p>
+    @if($record->rejection_reason)<p><strong>Rejection reason:</strong> {{ $record->rejection_reason }}</p>@endif
+    @if($record->admin_remarks)<p><strong>Admin remarks:</strong> {{ $record->admin_remarks }}</p>@endif
+    @if($record->expense)<p><strong>Linked expense:</strong> {{ $record->expense->reference_number }} (P{{ number_format($record->expense->amount,2) }})</p>@endif
+    @if($record->disbursement)<p><strong>Auto Disbursement:</strong> <a href="{{ route('admin.expenses.show', $record->disbursement) }}">{{ $record->disbursement->reference_number }}</a> (P{{ number_format($record->disbursement->amount,2) }} — {{ \App\Services\WorkflowService::label($record->disbursement->payment_status) }})</p>
+    @elseif(($record->approval_status ?? '') === 'approved')
+    <form method="POST" action="{{ route('admin.payables.disbursement', $record) }}" style="margin-top:8px;">@csrf<button class="btn btn-secondary" type="submit">Sync to Disbursement (approved before auto-forward existed)</button></form>
+    @endif
+    @if(in_array($record->approval_status ?? 'draft', ['submitted','under_review']))
+    <div style="display:flex;gap:16px;flex-wrap:wrap;">
+    <form method="POST" action="{{ route('admin.payables.approve', $record) }}">@csrf<textarea name="admin_remarks" class="form-control" rows="2" placeholder="Approval remarks (optional)"></textarea><button class="btn btn-primary" style="margin-top:8px;" type="submit">Approve</button></form>
+    <form method="POST" action="{{ route('admin.payables.reject', $record) }}">@csrf<input type="text" name="rejection_reason" class="form-control" placeholder="Rejection reason (required)" required><button class="btn btn-danger" style="margin-top:8px;" type="submit">Reject</button></form>
+    </div>
+    @endif
+</div>
+
+@if(!empty($history) && $history->count())
+<div class="fms-panel">
+    <h3>Approval History</h3>
+    <table class="fms-table"><thead><tr><th>Date</th><th>User</th><th>Action</th></tr></thead><tbody>
+    @foreach($history as $h)<tr><td>{{ $h->created_at?->format('M d, Y h:i A') }}</td><td>{{ $h->user->name ?? 'System' }}</td><td>{{ $h->action }} — {{ $h->description }}</td></tr>@endforeach
+    </tbody></table>
+</div>
+@endif
+
+<div class="fms-panel">
     <h3>Post a Payment</h3>
     <form method="POST" action="{{ route('admin.payables.pay', $record) }}" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
         @csrf

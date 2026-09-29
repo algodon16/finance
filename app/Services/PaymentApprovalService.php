@@ -33,6 +33,10 @@ class PaymentApprovalService
                 ]);
             }
 
+            // Lahat ng bayad dumadaan sa AR (idempotent resync — approve man,
+            // verify, reconcile, o in-edit ang amount).
+            \App\Models\AccountReceivable::resyncPayment($payment->fresh());
+
             $lastLedger = AccountLedger::where('student_id', $payment->student_id)
                 ->latest('transaction_date')
                 ->first();

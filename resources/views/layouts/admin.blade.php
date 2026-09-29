@@ -113,6 +113,7 @@
                 <a href="{{ route('admin.receivables.index') }}" class="{{ request()->routeIs('admin.receivables.*') ? 'active' : '' }}">Accounts Receivable Management</a>
                 <a href="{{ route('admin.funds.index') }}" class="{{ request()->routeIs('admin.funds.*') ? 'active' : '' }}">Fund Management and Allocation</a>
                 <a href="{{ route('admin.procurement.index') }}" class="{{ request()->routeIs('admin.procurement.*') ? 'active' : '' }}">Procurement and Financial Requests</a>
+                <a href="{{ route('admin.financial-requests.index') }}" class="{{ request()->routeIs('admin.financial-requests.*') ? 'active' : '' }}">Financial Requests Inbox</a>
                 <a href="{{ route('admin.assets.index') }}" class="{{ request()->routeIs('admin.assets.*') ? 'active' : '' }}">Asset and Depreciation Management</a>
                 <a href="{{ route('admin.reports.index') }}" class="{{ request()->routeIs('admin.reports.*') ? 'active' : '' }}">Financial Reporting and Compliance</a>
                 <a href="{{ route('admin.audit.index') }}" class="{{ request()->routeIs('admin.audit.*') ? 'active' : '' }}">Security and Audit Trail</a>
@@ -193,6 +194,15 @@
     @include('admin.fms.reports.partials.secure-access')
 
     <script src="{{ asset('js/app.js') }}"></script>
+    <script>
+        // Session keep-alive: ping every 10 minutes while the tab is open
+        // so long-open pages don't expire/logout on their own.
+        (function () {
+            setInterval(function () {
+                fetch("{{ route('keep-alive') }}", { credentials: 'same-origin' }).catch(function () {});
+            }, 10 * 60 * 1000);
+        })();
+    </script>
     <script>
         (function () {
             var dateEl = document.getElementById('adminDate');

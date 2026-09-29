@@ -14,11 +14,23 @@
 </div>
 
 <div class="fms-panel no-print">
-    <form method="GET" style="display:flex;gap:10px;flex-wrap:wrap;">
-        <input type="text" name="search" class="form-control" style="max-width:240px;" placeholder="Search vendor or invoice" value="{{ request('search') }}">
-        <select name="payment_status" class="form-control" style="max-width:180px;"><option value="">All statuses</option>@foreach(['pending','due_soon','overdue','partially_paid','fully_paid'] as $s)<option value="{{ $s }}" {{ request('payment_status') === $s ? 'selected' : '' }}>{{ ucwords(str_replace('_',' ',$s)) }}</option>@endforeach</select>
-        <button class="btn btn-secondary" type="submit">Filter</button>
-        <a class="btn btn-secondary" href="{{ route('admin.payables.index') }}">Reset</a>
+    <form method="GET" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+        <div><label style="font-size:0.8rem;">Search</label><br><input type="text" name="search" class="form-control" style="width:200px;" placeholder="Search vendor or invoice" value="{{ request('search') }}"></div>
+        <div><label style="font-size:0.8rem;">Payment Status</label><br>
+        <select name="payment_status" class="form-control" style="min-width:170px;">
+            <option value="">All payment statuses</option>
+            @foreach(['pending' => 'Pending', 'approved' => 'Approved', 'due_soon' => 'Due Soon', 'overdue' => 'Overdue', 'partially_paid' => 'Partially Paid', 'fully_paid' => 'Fully Paid'] as $s => $label)
+                <option value="{{ $s }}" {{ request('payment_status') === $s ? 'selected' : '' }}>{{ $label }}</option>
+            @endforeach
+        </select></div>
+        <div><label style="font-size:0.8rem;">Approval</label><br>
+        <select name="approval_status" class="form-control" style="min-width:160px;">
+            <option value="">All approvals</option>
+            @foreach(['submitted','approved','rejected','revision','cancelled','draft'] as $s)
+                <option value="{{ $s }}" {{ request('approval_status') === $s ? 'selected' : '' }}>{{ \App\Services\WorkflowService::label($s) }}</option>
+            @endforeach
+        </select></div>
+        <div><button class="btn btn-secondary" type="submit">Filter</button> <a class="btn btn-secondary" href="{{ route('admin.payables.index') }}">Reset</a></div>
     </form>
 </div>
 
@@ -35,7 +47,7 @@
                 <td style="text-align:right;">P{{ number_format($r->amount, 2) }}</td>
                 <td style="text-align:right;">P{{ number_format($r->amount_paid, 2) }}</td>
                 <td style="text-align:right;">P{{ number_format($r->remaining_balance, 2) }}</td>
-                <td><span class="status {{ $r->derived_status === 'Fully Paid' ? 'st-green' : ($r->derived_status === 'Overdue' ? 'st-red' : 'st-amber') }}">{{ $r->derived_status }}</span></td>
+                <td><span class="status {{ $r->derived_status === 'Fully Paid' ? 'st-green' : ($r->derived_status === 'Overdue' ? 'st-red' : 'st-amber') }}">{{ $r->derived_status }}</span><br><span class="status">{{ \App\Services\WorkflowService::label($r->approval_status ?? 'draft') }}</span></td>
                 <td><div class="fms-actions"><a class="btn btn-sm btn-secondary" href="{{ route('admin.payables.show', $r) }}">View</a><a class="btn btn-sm btn-secondary" href="{{ route('admin.payables.edit', $r) }}">Edit</a></div></td>
             </tr>
         @empty

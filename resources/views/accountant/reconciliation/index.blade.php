@@ -1,12 +1,16 @@
 @extends('layouts.app')
 
-@section('title', 'Reconciliation')
+@section('title', 'Reconciliation — Financial Reporting and Compliance')
 
 @section('content')
 <div class="page-header">
     <div>
         <h2>Reconciliation</h2>
-        <p class="page-subtitle">Compare recorded payments and identify financial variances.</p>
+        <p class="page-subtitle">Compare recorded payments and identify financial variances. Part of Financial Reporting and Compliance.</p>
+    </div>
+    <div style="display:flex;gap:8px;">
+    <a href="{{ route('accountant.financial-reports.index') }}" class="btn btn-secondary">Reports</a>
+    <a href="{{ route('accountant.reconciliation-records.index') }}" class="btn btn-secondary">Reconciliation Records</a>
     </div>
 </div>
 
@@ -38,20 +42,20 @@
 </div>
 
 <div class="filter-bar">
-    <form method="GET" action="{{ route('accountant.reconciliation.index') }}" class="filter-form">
-        <div class="form-group">
+    <form method="GET" action="{{ route('accountant.reconciliation.index') }}" class="filter-form" style="align-items:flex-end;">
+        <div class="form-group" style="flex:0 1 200px;min-width:160px;">
             <label for="search">Search</label>
             <input type="text" name="search" id="search" placeholder="Search student, ID, reference..." value="{{ request('search') }}" class="form-control">
         </div>
-        <div class="form-group">
+        <div class="form-group" style="min-width:150px;">
             <label for="date_from">Date From</label>
             <input type="date" name="date_from" id="date_from" value="{{ request('date_from') }}" class="form-control">
         </div>
-        <div class="form-group">
+        <div class="form-group" style="min-width:150px;">
             <label for="date_to">Date To</label>
             <input type="date" name="date_to" id="date_to" value="{{ request('date_to') }}" class="form-control">
         </div>
-        <div class="form-group">
+        <div class="form-group" style="min-width:150px;">
             <label for="status_filter">Status</label>
             <select name="status_filter" id="status_filter" class="form-control">
                 <option value="">All</option>
@@ -60,8 +64,8 @@
                 <option value="Unreconciled" {{ request('status_filter') === 'Unreconciled' ? 'selected' : '' }}>Unreconciled</option>
             </select>
         </div>
-        <div class="form-actions-inline">
-            <button type="submit" class="btn btn-primary">Filter</button>
+        <div style="display:flex;gap:8px;">
+            <button type="submit" class="btn btn-secondary">Filter</button>
             <a href="{{ route('accountant.reconciliation.index') }}" class="btn btn-secondary">Clear</a>
         </div>
     </form>

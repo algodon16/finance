@@ -1,7 +1,7 @@
 @extends('layouts.admin')
 @section('title', 'Financial Reporting and Compliance')
 @section('content')
-<div class="page-header"><h2>Financial Reporting and Compliance</h2></div>
+<div class="page-header"><h2>Financial Reporting and Compliance</h2><a class="btn btn-secondary" href="{{ route('admin.reports.reconciliations') }}">Review Accountant Reconciliations</a></div>
 <div class="fms-panel">
     <h3>Revenue Reports</h3>
     <p><a href="{{ route('admin.reports.revenue') }}">Daily / Monthly / Annual Revenue Report</a></p>

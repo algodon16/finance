@@ -7,13 +7,13 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 /**
- * Server-side 5-minute inactivity timeout for the whole web session.
+ * Server-side 8-hour inactivity timeout for the whole web session.
  * Also sends no-store headers so protected pages are not reachable
  * via the browser Back button after logout/expiry.
  */
 class EnforceSessionTimeout
 {
-    public const TIMEOUT_SECONDS = 300;
+    public const TIMEOUT_SECONDS = 28800;
 
     public function handle(Request $request, Closure $next)
     {
@@ -30,7 +30,7 @@ class EnforceSessionTimeout
                 }
 
                 return redirect()->route('login')->withErrors([
-                    'email' => 'Your session expired after 5 minutes of inactivity. Please log in again.',
+                    'email' => 'Your session expired after 8 hours of inactivity. Please log in again.',
                 ]);
             }
 

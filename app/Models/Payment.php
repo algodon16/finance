@@ -22,6 +22,8 @@ class Payment extends Model
         'reviewed_by',
         'reviewed_at',
         'rejection_reason',
+        'admin_remarks',
+        'submitted_at',
     ];
 
     protected $casts = [

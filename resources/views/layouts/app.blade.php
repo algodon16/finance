@@ -72,17 +72,41 @@
                     <a href="{{ route('accountant.dashboard') }}" class="{{ request()->routeIs('accountant.dashboard') ? 'active' : '' }}">
                         Dashboard
                     </a>
-                    <a href="{{ route('accountant.payment-records.index') }}" class="{{ request()->routeIs('accountant.payment-records.*') ? 'active' : '' }}">
-                        Payment Records
+                    <div class="sidebar-section-label">Financial Management</div>
+                    <a href="{{ route('accountant.budgets.index') }}" class="{{ request()->routeIs('accountant.budgets.*') ? 'active' : '' }}">
+                        Budget Planning and Allocation
                     </a>
-                    <a href="{{ route('accountant.reconciliation.index') }}" class="{{ request()->routeIs('accountant.reconciliation.*') ? 'active' : '' }}">
-                        Reconciliation
+                    <a href="{{ route('accountant.revenue.index') }}" class="{{ request()->routeIs('accountant.revenue.*') ? 'active' : '' }}">
+                        Revenue Management
+                    </a>
+                    <a href="{{ route('accountant.expenses.index') }}" class="{{ request()->routeIs('accountant.expenses.*') ? 'active' : '' }}">
+                        Expense and Disbursement Tracking
+                    </a>
+                    <a href="{{ route('accountant.payables.index') }}" class="{{ request()->routeIs('accountant.payables.*') ? 'active' : '' }}">
+                        Accounts Payable Management
                     </a>
                     <a href="{{ route('accountant.accounts-receivable.index') }}" class="{{ request()->routeIs('accountant.accounts-receivable.*') ? 'active' : '' }}">
-                        Accounts Receivable
+                        Accounts Receivable Management
                     </a>
-                    <a href="{{ route('accountant.financial-reports.index') }}" class="{{ request()->routeIs('accountant.financial-reports.*') ? 'active' : '' }}">
-                        Financial Reports
+                    <a href="{{ route('accountant.fund-allocations.index') }}" class="{{ request()->routeIs('accountant.fund-allocations.*') ? 'active' : '' }}">
+                        Fund Management and Allocation
+                    </a>
+                    <a href="{{ route('accountant.financial-requests.index') }}" class="{{ request()->routeIs('accountant.financial-requests.*', 'accountant.procurement.*') ? 'active' : '' }}">
+                        Procurement and Financial Requests
+                    </a>
+                    <a href="{{ route('accountant.assets.index') }}" class="{{ request()->routeIs('accountant.assets.*') ? 'active' : '' }}">
+                        Asset and Depreciation Management
+                    </a>
+                    <div class="sidebar-section-label">Reporting</div>
+                    <a href="{{ route('accountant.financial-reports.index') }}" class="{{ request()->routeIs('accountant.financial-reports.*', 'accountant.reconciliation.*', 'accountant.reconciliation-records.*') ? 'active' : '' }}">
+                        Financial Reporting and Compliance
+                    </a>
+                    <div class="sidebar-section-label">Audit</div>
+                    <a href="{{ route('accountant.audit.index') }}" class="{{ request()->routeIs('accountant.audit.*') ? 'active' : '' }}">
+                        Security and Audit Trail
+                    </a>
+                    <a href="{{ route('accountant.settings.index') }}" class="{{ request()->routeIs('accountant.settings.*') ? 'active' : '' }}">
+                        System Settings
                     </a>
                 @elseif(Auth::user()->role === 'admin')
                     <a href="{{ route('admin.dashboard') }}" class="{{ request()->routeIs('admin.dashboard') ? 'active' : '' }}">
@@ -168,6 +192,15 @@
     </div>
 
     <script src="{{ asset('js/app.js') }}"></script>
+    <script>
+        // Session keep-alive: ping every 10 minutes while the tab is open
+        // so long-open pages don't expire/logout on their own.
+        (function () {
+            setInterval(function () {
+                fetch("{{ route('keep-alive') }}", { credentials: 'same-origin' }).catch(function () {});
+            }, 10 * 60 * 1000);
+        })();
+    </script>
     @stack('scripts')
 </body>
 </html>

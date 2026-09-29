@@ -133,6 +133,11 @@ class AccountReceivableController extends Controller
             ->latest('payment_date')
             ->get();
 
-        return view('accountant.accounts-receivable.show', compact('account', 'student', 'charges', 'payments'));
+        $receivables = \App\Models\AccountReceivable::where('student_id', $student->id)
+            ->orderBy('due_date')
+            ->orderBy('id')
+            ->get();
+
+        return view('accountant.accounts-receivable.show', compact('account', 'student', 'charges', 'payments', 'receivables'));
     }
 }

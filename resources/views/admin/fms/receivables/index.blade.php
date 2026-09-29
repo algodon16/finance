@@ -14,11 +14,15 @@
 </div>
 
 <div class="fms-panel no-print">
-    <form method="GET" style="display:flex;gap:10px;flex-wrap:wrap;">
-        <input type="text" name="search" class="form-control" style="max-width:260px;" placeholder="Search student name or number" value="{{ request('search') }}">
-        <select name="status" class="form-control" style="max-width:180px;"><option value="">All statuses</option><option value="cleared" {{ request('status') === 'cleared' ? 'selected' : '' }}>Fully Paid</option><option value="not_cleared" {{ request('status') === 'not_cleared' ? 'selected' : '' }}>With Balance</option></select>
-        <button class="btn btn-secondary" type="submit">Filter</button>
-        <a class="btn btn-secondary" href="{{ route('admin.receivables.index') }}">Reset</a>
+    <form method="GET" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+        <div><label style="font-size:0.8rem;">Search</label><br><input type="text" name="search" class="form-control" style="width:200px;" placeholder="Search student name or number" value="{{ request('search') }}"></div>
+        <div><label style="font-size:0.8rem;">Status</label><br>
+        <select name="status" class="form-control" style="min-width:160px;">
+            <option value="">All statuses</option>
+            <option value="cleared" {{ request('status') === 'cleared' ? 'selected' : '' }}>Fully Paid</option>
+            <option value="not_cleared" {{ request('status') === 'not_cleared' ? 'selected' : '' }}>With Balance</option>
+        </select></div>
+        <div><button class="btn btn-secondary" type="submit">Filter</button> <a class="btn btn-secondary" href="{{ route('admin.receivables.index') }}">Reset</a></div>
     </form>
 </div>
 

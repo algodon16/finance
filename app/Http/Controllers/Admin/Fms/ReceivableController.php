@@ -49,7 +49,8 @@ class ReceivableController extends Controller
         $computedBalance = max(0, (float) ($receivable->total_charges ?? $charges) - $paid);
         $payments = Payment::where('student_id', $receivable->student_id)->orderBy('payment_date', 'desc')->take(50)->get();
         $ledger = \App\Models\AccountLedger::where('student_id', $receivable->student_id)->orderBy('created_at', 'desc')->take(50)->get();
-        return view('admin.fms.receivables.show', compact('receivable', 'payments', 'ledger', 'computedBalance', 'paid'));
+        $receivables = \App\Models\AccountReceivable::where('student_id', $receivable->student_id)->orderBy('due_date')->orderBy('id')->get();
+        return view('admin.fms.receivables.show', compact('receivable', 'payments', 'ledger', 'computedBalance', 'paid', 'receivables'));
     }
 
     public function assess(Request $request)
@@ -67,12 +68,24 @@ class ReceivableController extends Controller
             'due_date' => 'nullable|date',
         ]);
         DB::transaction(function () use ($data) {
-            FinancialCharge::create([
+            $charge = FinancialCharge::create([
                 'student_id' => $data['student_id'],
                 'amount' => $data['amount'],
                 'description' => $data['description'],
                 'due_date' => $data['due_date'] ?? today()->addDays(30),
                 'status' => 'active',
+            ]);
+            \App\Models\AccountReceivable::create([
+                'reference_number' => \App\Models\AccountReceivable::nextReferenceNumber(),
+                'student_id' => $data['student_id'],
+                'financial_charge_id' => $charge->id,
+                'description' => $data['description'],
+                'billed_amount' => $data['amount'],
+                'paid_amount' => 0,
+                'balance' => $data['amount'],
+                'due_date' => $charge->due_date,
+                'status' => 'open',
+                'assessed_by' => auth()->id(),
             ]);
             $account = StudentAccount::firstOrNew(['student_id' => $data['student_id']]);
             $account->total_charges = (float) ($account->total_charges ?? 0) + (float) $data['amount'];

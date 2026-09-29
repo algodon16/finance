@@ -65,6 +65,42 @@
 </div>
 
 <div class="dashboard-card">
+    <h3>Accounts Receivable Ledger</h3>
+    <div class="table-responsive">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Ref No.</th>
+                    <th>Description</th>
+                    <th style="text-align:right;">Billed</th>
+                    <th style="text-align:right;">Paid</th>
+                    <th style="text-align:right;">Balance</th>
+                    <th>Due Date</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                @forelse($receivables ?? [] as $ar)
+                    <tr>
+                        <td><strong>{{ $ar->reference_number }}</strong></td>
+                        <td>{{ $ar->description ?? '—' }}</td>
+                        <td style="text-align:right;">₱{{ number_format((float) $ar->billed_amount, 2) }}</td>
+                        <td style="text-align:right;">₱{{ number_format((float) $ar->paid_amount, 2) }}</td>
+                        <td style="text-align:right;font-weight:700;">₱{{ number_format((float) $ar->balance, 2) }}</td>
+                        <td>{{ $ar->due_date ? $ar->due_date->format('M d, Y') : 'N/A' }}</td>
+                        <td><span class="badge badge-gray">{{ ucfirst($ar->status) }}{{ $ar->isOverdue() ? ' (Overdue)' : '' }}</span></td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="7" class="text-center">No receivables found</td>
+                    </tr>
+                @endforelse
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="dashboard-card">
     <h3>Recorded Payments</h3>
     <div class="table-responsive">
         <table class="table">

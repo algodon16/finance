@@ -14,12 +14,24 @@
 </div>
 
 <div class="fms-panel no-print">
-    <form method="GET" style="display:flex;gap:10px;flex-wrap:wrap;">
-        <input type="text" name="search" class="form-control" style="max-width:240px;" placeholder="Search name, code, serial" value="{{ request('search') }}">
-        <select name="asset_status" class="form-control" style="max-width:180px;"><option value="">All statuses</option>@foreach(['active','maintenance','disposed','lost','retired'] as $s)<option value="{{ $s }}" {{ request('asset_status') === $s ? 'selected' : '' }}>{{ ucwords(str_replace('_',' ',$s)) }}</option>@endforeach</select>
-        <input type="text" name="asset_category" class="form-control" style="max-width:180px;" placeholder="Category" value="{{ request('asset_category') }}">
-        <button class="btn btn-secondary" type="submit">Filter</button>
-        <a class="btn btn-secondary" href="{{ route('admin.assets.index') }}">Reset</a>
+    <form method="GET" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+        <div><label style="font-size:0.8rem;">Search</label><br><input type="text" name="search" class="form-control" style="width:200px;" placeholder="Search name, code, serial" value="{{ request('search') }}"></div>
+        <div><label style="font-size:0.8rem;">Condition</label><br>
+        <select name="asset_status" class="form-control" style="min-width:160px;">
+            <option value="">All conditions</option>
+            @foreach(['active' => 'Active', 'maintenance' => 'Maintenance', 'disposed' => 'Disposed', 'lost' => 'Lost', 'retired' => 'Retired'] as $s => $label)
+                <option value="{{ $s }}" {{ request('asset_status') === $s ? 'selected' : '' }}>{{ $label }}</option>
+            @endforeach
+        </select></div>
+        <div><label style="font-size:0.8rem;">Approval</label><br>
+        <select name="approval_status" class="form-control" style="min-width:160px;">
+            <option value="">All approvals</option>
+            @foreach(['submitted','approved','rejected','revision','cancelled','draft'] as $s)
+                <option value="{{ $s }}" {{ request('approval_status') === $s ? 'selected' : '' }}>{{ \App\Services\WorkflowService::label($s) }}</option>
+            @endforeach
+        </select></div>
+        <div><label style="font-size:0.8rem;">Category</label><br><input type="text" name="asset_category" class="form-control" style="width:200px;" placeholder="Category" value="{{ request('asset_category') }}"></div>
+        <div><button class="btn btn-secondary" type="submit">Filter</button> <a class="btn btn-secondary" href="{{ route('admin.assets.index') }}">Reset</a></div>
     </form>
 </div>
 
@@ -35,7 +47,7 @@
                 <td style="text-align:right;">P{{ number_format($r->acquisition_cost, 2) }}</td>
                 <td style="text-align:right;">P{{ number_format($r->accumulated_depreciation, 2) }}</td>
                 <td style="text-align:right;">P{{ number_format($r->book_value, 2) }}</td>
-                <td><span class="status {{ $r->asset_status === 'active' ? 'st-green' : ($r->asset_status === 'maintenance' ? 'st-amber' : 'st-gray') }}">{{ ucwords(str_replace('_',' ',$r->asset_status)) }}</span></td>
+                <td><span class="status {{ $r->asset_status === 'active' ? 'st-green' : ($r->asset_status === 'maintenance' ? 'st-amber' : 'st-gray') }}">{{ ucwords(str_replace('_',' ',$r->asset_status)) }}</span><br><span class="status">{{ \App\Services\WorkflowService::label($r->approval_status ?? 'draft') }}</span></td>
                 <td><div class="fms-actions"><a class="btn btn-sm btn-secondary" href="{{ route('admin.assets.show', $r) }}">View</a><a class="btn btn-sm btn-secondary" href="{{ route('admin.assets.edit', $r) }}">Edit</a></div></td>
             </tr>
         @empty

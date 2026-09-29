@@ -17,7 +17,7 @@ Route::middleware(['auth:sanctum', 'api.fresh', 'role:admin'])->prefix('fms')->n
     Route::get('/dashboard', function () {
         return response()->json([
             'total_revenue' => (float) \App\Models\Payment::where(fn($q) => $q->where('status', 'approved')->orWhere('status', 'verified')->orWhere('verification_status', 'verified')->orWhere('verification_status', 'reconciled'))->sum('amount'),
-            'total_expenses' => (float) \App\Models\Expense::where('approval_status', 'approved')->sum('amount'),
+            'total_expenses' => (float) \App\Models\Expense::financiallyActive()->where('approval_status', 'approved')->sum('amount'),
             'accounts_receivable' => (float) \App\Models\StudentAccount::sum('outstanding_balance'),
             'available_funds' => (float) \App\Models\Fund::where('status', 'active')->sum('current_balance'),
         ]);

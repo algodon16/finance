@@ -11,9 +11,11 @@ class AuditLog extends Model
         'action',
         'module',
         'record_id',
+        'description',
         'old_value',
         'new_value',
         'ip_address',
+        'user_agent',
     ];
 
     protected $casts = [
