@@ -48,5 +48,23 @@
 @if(in_array($record->approval_status,['submitted','under_review']))<form method="POST" action="{{ route('accountant.payables.cancel',$record) }}">@csrf<button class="btn btn-secondary">Withdraw</button></form>@endif
 </div></div>
 </div>
+@if($record->financial_request_id && $record->financialRequest && ($record->approval_status ?? '') === 'approved')
+@php $pFr = $record->financialRequest; $pExp = $record->disbursement; @endphp
+<div class="dashboard-card" style="margin-top:16px;"><div class="card-head-row"><h3>Financial Processing — {{ $pExp && $pExp->processing_stage ? ucwords(strtolower($pExp->processing_stage)) : 'For Processing' }}</h3>@if($pExp)<a href="{{ route('accountant.expenses.show',$pExp) }}" class="view-all-link">Open Disbursement</a>@endif</div>
+<p><strong>Request ID:</strong> {{ $pFr->source_request_id ?: $pFr->request_number }} | <strong>Approved (ceiling):</strong> ₱{{ number_format($pFr->approved_amount ?? $record->amount,2) }} | <strong>Actual:</strong> {{ $pFr->actual_amount ? '₱'.number_format($pFr->actual_amount,2) : '—' }} | <strong>Disbursed:</strong> ₱{{ number_format($record->amount_paid,2) }}</p>
+@if($pFr->status === 'completed')<p><span class="badge badge-green">Completed</span> <span class="summary-desc">Actual posted to budget utilization.</span></p>
+@else<div class="two-col-grid">
+<div><h4 style="font-size:.85rem;">Record Disbursement</h4>
+<form method="POST" action="{{ route('accountant.payables.pay',$record) }}">@csrf
+<div class="form-group"><label>Amount (₱) <span class="required">*</span></label><input type="number" step="0.01" min="0.01" name="amount" class="form-control" required></div>
+<div class="form-group"><label>Disbursement Date <span class="required">*</span></label><input type="date" name="payment_date" class="form-control" value="{{ today()->toDateString() }}" max="{{ today()->toDateString() }}" required></div>
+<div class="form-group"><label>Payment Method</label><select name="payment_method" class="form-control"><option value="">—</option>@foreach(\App\Models\Expense::PAYMENT_METHODS as $m)<option value="{{ $m }}">{{ $m }}</option>@endforeach</select></div>
+<div class="form-group"><label>Payment Reference</label><input type="text" name="reference_number" class="form-control" maxlength="100"></div>
+<button class="btn btn-secondary">Record Disbursement</button></form></div>
+<div><h4 style="font-size:.85rem;">Completion</h4><p class="summary-desc">Requires recorded actual, full disbursement, and supporting documents. Posts the ACTUAL to budget utilization and syncs the request to COMPLETED.</p>
+<form method="POST" action="{{ route('accountant.payables.complete',$record) }}" onsubmit="return confirm('Mark this transaction COMPLETED?')">@csrf@if($errors->any())<div class="alert alert-error" style="margin-top:8px;margin-bottom:8px;">@foreach($errors->all() as $e)<div>{{ $e }}</div>@endforeach</div>@endif<button class="btn btn-primary">Mark Completed</button></form></div>
+</div>@endif
+</div>
+@endif
 @include('accountant.partials.approval-timeline',['history'=>$history ?? collect()])
 @endsection

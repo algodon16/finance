@@ -73,7 +73,7 @@
                         Dashboard
                     </a>
                     <div class="sidebar-section-label">Financial Management</div>
-                    <a href="{{ route('accountant.budgets.index') }}" class="{{ request()->routeIs('accountant.budgets.*') ? 'active' : '' }}">
+                    <a href="{{ route('accountant.budgets.overview') }}" class="{{ request()->routeIs('accountant.budgets.*') ? 'active' : '' }}">
                         Budget Planning and Allocation
                     </a>
                     <a href="{{ route('accountant.revenue.index') }}" class="{{ request()->routeIs('accountant.revenue.*') ? 'active' : '' }}">

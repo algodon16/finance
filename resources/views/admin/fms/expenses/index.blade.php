@@ -3,7 +3,6 @@
 @section('content')
 <div class="page-header">
     <h2>Expense and Disbursement Tracking</h2>
-    <a class="btn btn-primary" href="{{ route('admin.expenses.create') }}">Record Standalone Expense</a>
 </div>
 <p style="color:#64748b;font-size:0.85rem;">Approved APs appear here automatically as disbursements (ED-…). Totals count each transaction once.</p>
 

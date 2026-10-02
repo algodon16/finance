@@ -4,6 +4,7 @@
 <div class="page-header">
     <div><h2>Budget Planning and Allocation Overview</h2><p style="color:#64748b;margin:4px 0 0;">All budget plans with proposed totals and approval status.</p></div>
     <div class="no-print" style="display:flex;gap:8px;">
+        <a class="btn btn-secondary" href="{{ route('admin.budgets.requests') }}">Budget Requests Inbox</a>
         <a class="btn btn-secondary" href="{{ route('admin.budgets.ai') }}">AI-Assisted Planning</a>
         <a class="btn btn-primary" href="{{ route('admin.budgets.create') }}">Create Budget Plan</a>
     </div>
@@ -21,10 +22,10 @@
     <form method="GET" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
         <div><label style="font-size:0.8rem;">Search Plan</label><br><input type="text" name="search" class="form-control" style="min-width:220px;" placeholder="Plan name / department / program" value="{{ request('search') }}"></div>
         <div><label style="font-size:0.8rem;">Academic Year</label><br>
-        <select name="fiscal_year" class="form-control" style="min-width:170px;">
+        <select name="academic_year" class="form-control" style="min-width:170px;">
             <option value="">All Academic Years</option>
             @foreach(($years ?? []) as $y)
-                <option value="{{ $y }}" {{ request('fiscal_year') === $y ? 'selected' : '' }}>{{ $y }}</option>
+                <option value="{{ $y }}" {{ request('academic_year') === $y ? 'selected' : '' }}>{{ $y }}</option>
             @endforeach
         </select></div>
         <div><label style="font-size:0.8rem;">Status</label><br>
@@ -49,7 +50,7 @@
             <tr>
                 <td><strong>#{{ $p->id }}</strong></td>
                 <td><a href="{{ route('admin.budgets.show', $p) }}"><strong>{{ $p->budget_name }}</strong></a><br><span style="color:#64748b;font-size:.8rem;">{{ $p->budget_category }}</span></td>
-                <td>{{ $p->fiscal_year }}</td>
+                <td>{{ $p->academic_year }}</td>
                 <td>{{ $p->department ?? '—' }}</td>
                 <td style="text-align:right;">{{ number_format($qty) }}</td>
                 <td style="text-align:right;font-weight:700;">P{{ number_format($p->allocated_amount, 2) }}</td>

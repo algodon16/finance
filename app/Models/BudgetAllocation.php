@@ -20,4 +20,11 @@ class BudgetAllocation extends Model
     {
         return $this->belongsTo(BudgetPlan::class);
     }
+
+    /** Human allocation reference, e.g. BA-2027-0001. */
+    public function getAllocationIdAttribute(): string
+    {
+        $year = $this->allocation_date?->format('Y') ?? $this->created_at?->format('Y') ?? now()->format('Y');
+        return 'BA-'.$year.'-'.str_pad((string) $this->id, 4, '0', STR_PAD_LEFT);
+    }
 }

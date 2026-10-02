@@ -3,7 +3,6 @@
 @section('content')
 <div class="page-header">
     <h2>Accounts Payable Management</h2>
-    <a class="btn btn-primary" href="{{ route('admin.payables.create') }}">Record Payable</a>
 </div>
 
 <div class="fms-stat-grid">

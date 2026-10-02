@@ -25,7 +25,7 @@ class FmsDemoSeeder extends Seeder
 
         if (BudgetPlan::count() === 0) {
             $plan = BudgetPlan::create([
-                'budget_name' => 'Academic Operations 2026-2027', 'fiscal_year' => '2026-2027',
+                'budget_name' => 'Academic Operations 2026-2027', 'academic_year' => '2026-2027',
                 'department' => 'Academic Affairs', 'budget_category' => 'Academic',
                 'allocated_amount' => 5000000, 'utilized_amount' => 0,
                 'start_date' => '2026-06-01', 'end_date' => '2027-05-31',

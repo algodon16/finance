@@ -17,7 +17,7 @@
 input[list]::-webkit-calendar-picker-indicator{display:none !important;}
 @media(max-width:900px){.fr-info-grid{grid-template-columns:1fr;}.fr-link-row{grid-template-columns:1fr;}}
 </style>
-<div class="page-header"><div><h2>{{ isset($record->id) ? 'Revise Request' : 'Prepare Financial Request' }}</h2><p class="page-subtitle">Fill in Information, check Available / Remaining Budget, add Budget Items, then save.</p></div><a href="{{ route('accountant.financial-requests.index') }}" class="btn btn-secondary">Back</a></div>
+<div class="page-header"><div><h2>{{ isset($record->id) ? 'Revise Request' : 'Prepare Internal Request' }}</h2><p class="page-subtitle">Internal requests are tagged as Financial Management origin. External subsystem requests arrive via integration and are never re-created here.</p></div><a href="{{ route('accountant.financial-requests.index') }}" class="btn btn-secondary">Back</a></div>
 @if($errors->any())<div class="alert alert-error">@foreach($errors->all() as $e)<div>{{ $e }}</div>@endforeach</div>@endif
 <form method="POST" action="{{ isset($record->id) ? route('accountant.financial-requests.update',$record) : route('accountant.financial-requests.store') }}" enctype="multipart/form-data" id="finReqForm">
 @csrf @if(isset($record->id)) @method('PUT') @endif
@@ -34,7 +34,7 @@ $selectedBudgetId = old('budget_plan_id', $record->budget_plan_id ?? $fallbackBu
 <div class="form-group span-2"><label>Budget ID (Budget Plan)</label>
 <input type="text" name="budget_plan_id" id="budgetPlanId" class="form-control" inputmode="numeric" pattern="[0-9]*" list="budgetIdList" placeholder="e.g. 3 — type Budget ID" value="{{ $selectedBudgetId }}">
 <datalist id="budgetIdList">
-@foreach(($budgets ?? []) as $b)<option value="{{ $b->id }}">#{{ $b->id }} — {{ $b->budget_name }} ({{ $b->fiscal_year }}) — Rem ₱{{ number_format((float) $b->remaining_amount,2) }}</option>@endforeach
+@foreach(($budgets ?? []) as $b)<option value="{{ $b->id }}">#{{ $b->id }} — {{ $b->budget_name }} ({{ $b->academic_year }}) — Rem ₱{{ number_format((float) $b->remaining_amount,2) }}</option>@endforeach
 </datalist>
 <p class="summary-desc" id="linkHint">I-type ang Budget ID — automatic na magpapakita ang Available / Remaining sa kanan.</p>
 <div id="deptBudgets" style="display:none;"><p class="summary-desc" style="margin:6px 0 0;"><strong>Budgets ng department na ito</strong> (click para gamitin ang ID):</p><ul class="fr-dept-list" id="deptBudgetList"></ul></div>
@@ -194,7 +194,7 @@ async function fetchDeptBudgets(){
     list.innerHTML='';
     d.budgets.forEach(b=>{
       const li=document.createElement('li');
-      li.innerHTML='<span><strong>#'+b.id+'</strong> '+b.name+' ('+b.fiscal_year+')</span><span>'+peso(b.remaining)+'</span>';
+      li.innerHTML='<span><strong>#'+b.id+'</strong> '+b.name+' ('+b.academic_year+')</span><span>'+peso(b.remaining)+'</span>';
       li.title='Click para gamitin ang ID '+b.id;
       li.addEventListener('click',()=>{
         const sel=document.getElementById('budgetPlanId');

@@ -106,7 +106,7 @@
 
             <nav class="sidebar-nav">
                 <a href="{{ route('admin.dashboard') }}" class="{{ request()->routeIs('admin.dashboard') ? 'active' : '' }}">Dashboard</a>
-                <a href="{{ route('admin.budgets.index') }}" class="{{ request()->routeIs('admin.budgets.*') ? 'active' : '' }}">Budget Planning and Allocation</a>
+                <a href="{{ route('admin.budgets.overview') }}" class="{{ request()->routeIs('admin.budgets.*') ? 'active' : '' }}">Budget Planning and Allocation</a>
                 <a href="{{ route('admin.revenues.index') }}" class="{{ request()->routeIs('admin.revenues.*') ? 'active' : '' }}">Revenue Management</a>
                 <a href="{{ route('admin.expenses.index') }}" class="{{ request()->routeIs('admin.expenses.*') ? 'active' : '' }}">Expense and Disbursement Tracking</a>
                 <a href="{{ route('admin.payables.index') }}" class="{{ request()->routeIs('admin.payables.*') ? 'active' : '' }}">Accounts Payable Management</a>

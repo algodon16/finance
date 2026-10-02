@@ -1,7 +1,7 @@
 @extends('layouts.admin')
 @section('title', 'Procurement and Financial Requests')
 @section('content')
-<div class="page-header"><h2>Procurement and Financial Requests</h2><a class="btn btn-primary" href="{{ route('admin.procurement.create') }}">Create Request</a></div>
+<div class="page-header"><div><h2>Procurement and Financial Requests</h2><p class="page-subtitle" style="color:#64748b;font-size:.85rem;">Financial Requests Inbox — accountant submissions for approval.</p></div><div style="display:flex;gap:8px;"><button type="button" class="btn btn-primary" data-open-simulate>+ Simulate Incoming Request</button></div></div>
 <div class="fms-stat-grid">
 <div class="fms-stat"><h4>Pending</h4><p class="val">{{ $counts['pending'] ?? 0 }}</p></div>
 <div class="fms-stat"><h4>Approved</h4><p class="val">{{ $counts['approved'] ?? 0 }}</p></div>
@@ -18,9 +18,10 @@
 </select></div>
 <div><button class="btn btn-secondary" type="submit">Filter</button> <a class="btn btn-secondary" href="{{ route('admin.financial-requests.index') }}">Clear</a></div>
 </form>
-<table class="fms-table"><thead><tr><th>Request No.</th><th>Type</th><th>Budget ID</th><th style="text-align:right;">Amount</th><th>Prepared By</th><th>Status</th><th>Actions</th></tr></thead><tbody>
-@forelse($records as $r)@php $bId = $r->budget_plan_id ?? (($r->reference_type === \App\Models\BudgetPlan::class) ? $r->reference_id : null); @endphp<tr><td><a href="{{ route('admin.financial-requests.show', $r) }}">{{ $r->request_number }}</a></td><td>{{ $r->request_type }}</td><td>@if($bId)<strong>#{{ $bId }}</strong>@if($r->budgetPlan)<span style="color:#64748b;"> {{ $r->budgetPlan->budget_name }}</span>@endif@else<span style="color:#64748b;">—</span>@endif</td><td style="text-align:right;">P{{ number_format($r->amount,2) }}</td><td>{{ $r->preparer->name ?? '—' }}</td><td><span class="status">{{ \App\Services\WorkflowService::label($r->status) }}</span></td><td><a class="btn btn-sm btn-secondary" href="{{ route('admin.financial-requests.show', $r) }}">Review</a></td></tr>
-@empty<tr><td colspan="7" style="color:#64748b;">No financial requests.</td></tr>@endforelse
-</tbody></table><div class="pagination-wrapper">{{ $records->links() }}</div>
+<table class="fms-table"><thead><tr><th>Request ID</th><th>Source</th><th>Type</th><th>Budget ID</th><th style="text-align:right;">Amount</th><th>Prepared By</th><th>Status</th><th>Actions</th></tr></thead><tbody>
+@forelse($records as $r)@php $bId = $r->budget_plan_id ?? (($r->reference_type === \App\Models\BudgetPlan::class) ? $r->reference_id : null); @endphp<tr><td><a href="{{ route('admin.financial-requests.show', $r) }}">{{ $r->display_ref }}</a>@if(!empty($r->metadata['demo'])) <span class="status st-red">Demo</span>@endif</td><td>{{ $r->source_label }}</td><td>{{ $r->request_type }}</td><td>@if($bId)<strong>#{{ $bId }}</strong>@if($r->budgetPlan)<span style="color:#64748b;"> {{ $r->budgetPlan->budget_name }}</span>@endif@else<span style="color:#64748b;">—</span>@endif</td><td style="text-align:right;">P{{ number_format($r->amount,2) }}</td><td>{{ $r->preparer->name ?? '—' }}</td><td><span class="status">{{ \App\Services\WorkflowService::label($r->status) }}</span></td><td><a class="btn btn-sm btn-secondary" href="{{ route('admin.financial-requests.show', $r) }}">Review</a></td></tr>
+@empty<tr><td colspan="8" style="color:#64748b;">No financial requests.</td></tr>@endforelse
+</tbody></table>    <div class="pagination-wrapper">{{ $records->links() }}</div>
 </div>
+@include('financial-requests.partials.simulate-modal', ['simulateAction' => route('admin.financial-requests.simulate'), 'departments' => $departments ?? [], 'budgets' => $budgets ?? []])
 @endsection

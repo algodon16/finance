@@ -8,7 +8,7 @@
 <div class="dashboard-card"><h3>Budget Utilization Panel</h3>
 @if($util)<p>Approved Budget: <strong>₱{{ number_format($util['approved'],2) }}</strong></p><p>Already Allocated: <strong>₱{{ number_format($util['allocated'],2) }}</strong></p><p>Remaining Available: <strong>₱{{ number_format($util['remaining'],2) }}</strong></p><p>Proposed Allocation: <strong>₱{{ number_format($util['proposed'],2) }}</strong></p><p>Remaining After: <strong>₱{{ number_format($util['after'],2) }}</strong></p>@else<p class="summary-desc">No linked budget — allocation draws from fund availability only.</p>@endif
 <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
-@if(in_array($record->status,['draft','for_revision','revision','rejected','cancelled']))<a href="{{ route('accountant.fund-allocations.edit',$record) }}" class="btn btn-secondary">Edit / Revise</a><form method="POST" action="{{ route('accountant.fund-allocations.submit',$record) }}">@csrf<button class="btn btn-primary">Submit for Admin Approval</button></form>@endif
+<p class="summary-desc">Read-only record. New allocations are created automatically from approved Budget Requests.</p>
 @if(in_array($record->status,['submitted','under_review']))<form method="POST" action="{{ route('accountant.fund-allocations.cancel',$record) }}">@csrf<button class="btn btn-secondary">Withdraw</button></form>@endif
 </div></div>
 </div>

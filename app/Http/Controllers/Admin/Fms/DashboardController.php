@@ -108,11 +108,25 @@ class DashboardController extends Controller
         $budgetUsed = min($budgetUsed, $budgetAllocated);
         $budgetRemaining = max(0, $budgetAllocated - $budgetUsed);
         $budgetPct = $budgetAllocated > 0 ? round(($budgetUsed / $budgetAllocated) * 100, 1) : 0.0;
-        $budgetYearLabel = BudgetPlan::whereNotNull('fiscal_year')->where('fiscal_year', '<>', '')->orderByDesc('id')->value('fiscal_year')
-            ?: (Carbon::now()->format('Y') . '-' . Carbon::now()->addYear()->format('Y'));
+        $fallbackYear = Carbon::now()->format('Y') . '-' . Carbon::now()->addYear()->format('Y');
+        $budgetYearLabel = $fallbackYear;
+        try {
+            $yearCol = BudgetPlan::yearColumn();
+            $budgetYearLabel = BudgetPlan::whereNotNull($yearCol)->where($yearCol, '<>', '')->orderByDesc('id')->value($yearCol)
+                ?: $fallbackYear;
+        } catch (\Throwable $e) {
+            $budgetYearLabel = $fallbackYear;
+        }
 
         $recentPayments = Payment::with('student')->latest()->take(8)->get();
         $recentExpenses = Expense::latest()->take(8)->get();
+
+        // ---- Approval → fulfillment pipeline (same records, no new modules) ----
+        $approvedRequests = (int) \App\Models\FinancialRequest::where('status', 'approved')->count();
+        $approvedAmount = (float) \App\Models\FinancialRequest::where('status', 'approved')->sum('amount');
+        $awaitingProcessing = (int) \App\Models\FinancialRequest::where('status', 'approved')
+            ->whereDoesntHave('payable.disbursement', fn($q) => $q->where('payment_status', 'paid'))->count();
+        $completedTransactions = (int) \App\Models\FinancialRequest::where('status', 'completed')->count();
 
         $budgetUtil = BudgetPlan::select('budget_name', 'allocated_amount', 'utilized_amount')->take(8)->get();
 
@@ -129,7 +143,8 @@ class DashboardController extends Controller
             'revenueLabels', 'revenueFullLabels', 'revenueData',
             'expenseLabels', 'expenseFullLabels', 'expenseData',
             'budgetAllocated', 'budgetUsed', 'budgetRemaining', 'budgetPct', 'budgetYearLabel',
-            'fundTotal'
+            'fundTotal',
+            'approvedRequests', 'approvedAmount', 'awaitingProcessing', 'completedTransactions'
         ));
     }
 }

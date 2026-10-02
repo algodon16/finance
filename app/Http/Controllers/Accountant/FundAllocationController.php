@@ -4,71 +4,51 @@ namespace App\Http\Controllers\Accountant;
 
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
+use App\Models\BudgetAllocation;
 use App\Models\BudgetPlan;
 use App\Models\Fund;
 use App\Models\FundAllocation;
-use App\Services\AuditService;
 use App\Services\WorkflowService;
 use Illuminate\Http\Request;
 
 class FundAllocationController extends Controller
 {
+    /**
+     * Fund Management & Allocation is a MONITORING page.
+     * Allocations arrive automatically from approved Budget Requests —
+     * there is no manual allocation workflow here (single source of truth).
+     */
     public function index(Request $request)
     {
-        $q = FundAllocation::with(['fund', 'budgetPlan'])->orderByDesc('created_at');
-        if ($request->filled('status')) $q->where('status', $request->status);
-        if ($request->filled('fund_id')) $q->where('fund_id', $request->fund_id);
-        $records = $q->paginate(12)->withQueryString();
         $funds = Fund::orderBy('fund_name')->get();
-        return view('accountant.fund-allocations.index', compact('records', 'funds'));
+        $a = BudgetAllocation::with('budgetPlan')->orderByDesc('created_at');
+        if ($request->filled('fund')) {
+            $a->whereHas('budgetPlan', fn($w) => $w->where('funding_source', $request->fund));
+        }
+        if ($request->filled('department')) {
+            $a->whereHas('budgetPlan', fn($w) => $w->where('department', $request->department));
+        }
+        $allocations = $a->paginate(12)->withQueryString();
+        $departments = BudgetPlan::whereNotNull('department')->where('department', '<>', '')->distinct()->orderBy('department')->pluck('department');
+        return view('accountant.fund-allocations.index', compact('funds', 'allocations', 'departments'));
     }
 
     public function create()
     {
-        return view('accountant.fund-allocations.form', [
-            'record' => new FundAllocation(),
-            'funds' => Fund::where('status', 'active')->orderBy('fund_name')->get(),
-            'budgets' => BudgetPlan::whereIn('status', ['approved', 'active'])->orderBy('budget_name')->get(),
-        ]);
+        // No manual allocation workflow: allocations are auto-created on admin approval.
+        return redirect()->route('accountant.fund-allocations.index')
+            ->with('error', 'Allocations are created automatically when Admin approves a Budget Request. Start from Budget Requests instead.');
+    }
+
+    protected function manualBlocked(): never
+    {
+        abort(422, 'Manual allocations are disabled. Allocations are created automatically when Admin approves a Budget Request under Budget Planning & Allocation.');
     }
 
     public function store(Request $request)
     {
         abort_unless(auth()->user()->role === 'accountant', 403);
-        $data = $request->validate([
-            'fund_id' => 'required|exists:funds,id',
-            'budget_plan_id' => 'nullable|exists:budget_plans,id',
-            'allocated_to' => 'required|string|max:255',
-            'amount' => 'required|numeric|min:0.01|max:999999999999.99',
-            'allocation_date' => 'required|date|before_or_equal:today',
-            'purpose' => 'required|string|max:255',
-            'description' => 'nullable|string|max:5000',
-            'supporting_document' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
-            'remarks' => 'nullable|string|max:2000',
-        ]);
-        // Server-side: do not allow exceeding available funds.
-        $fund = Fund::findOrFail($data['fund_id']);
-        $available = (float) bcsub((string) $fund->current_balance, (string) $fund->reserved_amount, 2);
-        if ((float) $data['amount'] > $available) {
-            return back()->withErrors(['amount' => 'Allocation exceeds available fund of P'.number_format($available, 2).'.'])->withInput();
-        }
-        // Fund Management draws only on approved budgets — never on drafts.
-        if (! empty($data['budget_plan_id'])) {
-            $err = $this->budgetGuard((int) $data['budget_plan_id'], (float) $data['amount']);
-            if ($err) return back()->withErrors(['budget_plan_id' => $err])->withInput();
-        }
-        if ($request->hasFile('supporting_document')) {
-            $data['supporting_document'] = $request->file('supporting_document')->store('allocation-docs', 'public');
-        }
-        $data['status'] = 'draft';
-        $data['created_by'] = auth()->id();
-        $record = FundAllocation::create($data);
-        AuditService::log('create', 'fund_allocations', (string) $record->id, null, null, "Accountant ".auth()->user()->name." prepared Fund Allocation #{$record->id} (P".number_format($record->amount, 2).").");
-        if ($request->input('action') === 'submit') {
-            WorkflowService::submit($record->fresh(), 'fund_allocations', 'Fund Allocation');
-            return redirect()->route('accountant.fund-allocations.index')->with('success', 'Fund allocation submitted for admin approval.');
-        }
-        return redirect()->route('accountant.fund-allocations.index')->with('success', 'Fund allocation saved as draft.');
+        $this->manualBlocked();
     }
 
     public function show(FundAllocation $fundAllocation)
@@ -86,64 +66,20 @@ class FundAllocationController extends Controller
 
     public function edit(FundAllocation $fundAllocation)
     {
-        abort_if(! in_array($fundAllocation->status, ['draft', 'for_revision', 'revision', 'rejected', 'cancelled'], true), 422, 'Only draft or rejected/revision allocations can be edited.');
-        return view('accountant.fund-allocations.form', [
-            'record' => $fundAllocation,
-            'funds' => Fund::where('status', 'active')->orderBy('fund_name')->get(),
-            'budgets' => BudgetPlan::whereIn('status', ['approved', 'active'])->orderBy('budget_name')->get(),
-        ]);
+        // Read-only history: existing records stay viewable, never re-entered.
+        return redirect()->route('accountant.fund-allocations.show', $fundAllocation);
     }
 
     public function update(Request $request, FundAllocation $fundAllocation)
     {
         abort_unless(auth()->user()->role === 'accountant', 403);
-        abort_if(! in_array($fundAllocation->status, ['draft', 'for_revision', 'revision', 'rejected', 'cancelled'], true), 422, 'Approved/submitted allocations cannot be edited directly.');
-        $data = $request->validate([
-            'fund_id' => 'required|exists:funds,id',
-            'budget_plan_id' => 'nullable|exists:budget_plans,id',
-            'allocated_to' => 'required|string|max:255',
-            'amount' => 'required|numeric|min:0.01|max:999999999999.99',
-            'allocation_date' => 'required|date|before_or_equal:today',
-            'purpose' => 'required|string|max:255',
-            'description' => 'nullable|string|max:5000',
-            'supporting_document' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
-            'remarks' => 'nullable|string|max:2000',
-        ]);
-        $fund = Fund::findOrFail($data['fund_id']);
-        $available = (float) bcsub((string) $fund->current_balance, (string) $fund->reserved_amount, 2);
-        if ((float) $data['amount'] > $available) {
-            return back()->withErrors(['amount' => 'Allocation exceeds available fund of P'.number_format($available, 2).'.'])->withInput();
-        }
-        if (! empty($data['budget_plan_id'])) {
-            $err = $this->budgetGuard((int) $data['budget_plan_id'], (float) $data['amount']);
-            if ($err) return back()->withErrors(['budget_plan_id' => $err])->withInput();
-        }
-        if ($request->hasFile('supporting_document')) {
-            $data['supporting_document'] = $request->file('supporting_document')->store('allocation-docs', 'public');
-        }
-        $old = $fundAllocation->toArray();
-        $data['status'] = 'draft';
-        $data['rejection_reason'] = null;
-        $data['revision_number'] = ((int) $fundAllocation->revision_number) + 1;
-        $fundAllocation->update($data);
-        AuditService::log('update', 'fund_allocations', (string) $fundAllocation->id, $old, $fundAllocation->fresh()->toArray(), "Accountant ".auth()->user()->name." revised Fund Allocation #{$fundAllocation->id}.");
-        return redirect()->route('accountant.fund-allocations.show', $fundAllocation)->with('success', 'Allocation revised and saved as draft.');
+        $this->manualBlocked();
     }
 
     public function submit(FundAllocation $fundAllocation)
     {
         abort_unless(auth()->user()->role === 'accountant', 403);
-        // Re-validate available fund at submit time.
-        $fund = Fund::findOrFail($fundAllocation->fund_id);
-        $available = (float) bcsub((string) $fund->current_balance, (string) $fund->reserved_amount, 2);
-        abort_if((float) $fundAllocation->amount > $available, 422, 'Allocation exceeds available fund of P'.number_format($available, 2).'.');
-        // Re-validate the linked budget: still approved with room left.
-        if ($fundAllocation->budget_plan_id) {
-            $err = $this->budgetGuard((int) $fundAllocation->budget_plan_id, (float) $fundAllocation->amount);
-            abort_if($err, 422, $err);
-        }
-        WorkflowService::submit($fundAllocation, 'fund_allocations', 'Fund Allocation');
-        return back()->with('success', 'Fund allocation submitted for admin approval.');
+        $this->manualBlocked();
     }
 
     /**

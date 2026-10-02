@@ -2,8 +2,7 @@
 @section('title', 'Procurement and Financial Requests')
 @section('content')
 <div class="page-header">
-    <h2>Procurement and Financial Requests</h2>
-    <div style="display:flex;gap:8px;"><a class="btn btn-secondary" href="{{ route('admin.financial-requests.index') }}">Review Accountant Financial Requests</a><a class="btn btn-primary" href="{{ route('admin.procurement.create') }}">New Request</a></div>
+    <div><h2>Procurement and Financial Requests</h2><p class="page-subtitle" style="color:#64748b;font-size:.85rem;">Accountant requests for admin approval — same records as Financial Requests Inbox.</p></div>
 </div>
 
 <div class="fms-stat-grid">
@@ -15,11 +14,11 @@
 
 <div class="fms-panel no-print">
     <form method="GET" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
-        <div><label style="font-size:0.8rem;">Search</label><br><input type="text" name="search" class="form-control" style="width:200px;" placeholder="Search request no., dept, item" value="{{ request('search') }}"></div>
+        <div><label style="font-size:0.8rem;">Search</label><br><input type="text" name="search" class="form-control" style="width:200px;" placeholder="Search request ID, dept, purpose" value="{{ request('search') }}"></div>
         <div><label style="font-size:0.8rem;">Status</label><br>
         <select name="status" class="form-control" style="min-width:160px;">
             <option value="">All statuses</option>
-            @foreach(['draft' => 'Draft', 'submitted' => 'Submitted', 'under_review' => 'Under Review', 'approved' => 'Approved', 'rejected' => 'Rejected', 'ordered' => 'Ordered', 'fulfilled' => 'Fulfilled', 'cancelled' => 'Cancelled'] as $s => $label)
+            @foreach(['draft' => 'Draft', 'submitted' => 'Submitted', 'under_review' => 'Under Review', 'approved' => 'Approved', 'rejected' => 'Rejected', 'for_revision' => 'For Revision', 'completed' => 'Completed'] as $s => $label)
                 <option value="{{ $s }}" {{ request('status') === $s ? 'selected' : '' }}>{{ $label }}</option>
             @endforeach
         </select></div>
@@ -30,21 +29,20 @@
 <div class="fms-panel">
     <div style="overflow-x:auto;">
     <table class="fms-table">
-        <thead><tr><th>Request No.</th><th>Department</th><th>Item / Service</th><th>Qty</th><th style="text-align:right;">Est. Cost</th><th>Supplier</th><th>Status</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Request ID</th><th>Source</th><th>Department / Type</th><th style="text-align:right;">Amount</th><th>Prepared By</th><th>Status</th><th>Actions</th></tr></thead>
         <tbody>
         @forelse($records as $r)
             <tr>
-                <td><a href="{{ route('admin.procurement.show', $r) }}">{{ $r->request_number ?? ('REQ-'.$r->id) }}</a></td>
-                <td>{{ $r->requesting_department ?? '—' }}</td>
-                <td>{{ \Illuminate\Support\Str::limit($r->item_description ?? '', 60) }}</td>
-                <td>{{ $r->quantity ?? '—' }}</td>
-                <td style="text-align:right;">P{{ number_format($r->estimated_cost ?? $r->total_amount ?? 0, 2) }}</td>
-                <td>{{ $r->supplier ?? '—' }}</td>
+                <td><a href="{{ route('admin.financial-requests.show', $r) }}">{{ $r->display_ref }}</a>@if(!empty($r->metadata['demo'])) <span class="status st-red">Demo</span>@endif</td>
+                <td>{{ $r->source_label }}</td>
+                <td>{{ $r->department ?? '—' }}<br><span style="color:#64748b;font-size:.8rem;">{{ ucfirst(str_replace('_',' ',$r->request_type)) }}</span></td>
+                <td style="text-align:right;">P{{ number_format($r->amount ?? 0, 2) }}</td>
+                <td>{{ $r->preparer->name ?? '—' }}</td>
                 <td><span class="status">{{ ucwords(str_replace('_',' ',$r->status)) }}</span></td>
-                <td><div class="fms-actions"><a class="btn btn-sm btn-secondary" href="{{ route('admin.procurement.show', $r) }}">View</a><a class="btn btn-sm btn-secondary" href="{{ route('admin.procurement.edit', $r) }}">Edit</a></div></td>
+                <td><div class="fms-actions"><a class="btn btn-sm btn-secondary" href="{{ route('admin.financial-requests.show', $r) }}">Review</a></div></td>
             </tr>
         @empty
-            <tr><td colspan="8" style="color:#64748b;">No financial records available.</td></tr>
+            <tr><td colspan="7" style="color:#64748b;">No financial requests from accountant yet.</td></tr>
         @endforelse
         </tbody>
     </table>

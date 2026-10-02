@@ -1,7 +1,7 @@
 @extends('layouts.app')
 @section('title', 'Accounts Payable')
 @section('content')
-<div class="page-header"><div><h2>Accounts Payable</h2><p class="page-subtitle">Vendor obligations linked to approved requests. Payment requires admin approval.</p></div><a href="{{ route('accountant.payables.create') }}" class="btn btn-primary">Prepare Payable</a></div>
+<div class="page-header"><div><h2>Accounts Payable</h2><p class="page-subtitle">Vendor obligations linked to approved requests. Payment requires admin approval.</p></div></div>
 <div class="summary-cards">
 <div class="dashboard-card acct-card"><div class="card-content"><h3>Overdue</h3><p class="card-amount">{{ $summary['overdue'] ?? 0 }}</p></div></div>
 <div class="dashboard-card acct-card"><div class="card-content"><h3>Total / Paid</h3><p class="card-amount">₱{{ number_format($summary['total'] ?? 0,2) }} / ₱{{ number_format($summary['paid'] ?? 0,2) }}</p></div></div>

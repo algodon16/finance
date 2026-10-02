@@ -25,7 +25,7 @@ Route::middleware(['auth:sanctum', 'api.fresh', 'role:admin'])->prefix('fms')->n
     Route::get('/budgets', fn() => response()->json(\App\Models\BudgetPlan::paginate(15)));
     Route::post('/budgets', function (Request $r) {
         $data = $r->validate([
-            'budget_name' => 'required|string|max:255', 'fiscal_year' => 'required|string|max:20',
+            'budget_name' => 'required|string|max:255', 'academic_year' => 'required|string|max:20',
             'budget_category' => 'required|string|max:255', 'allocated_amount' => 'required|numeric|min:0.01',
             'start_date' => 'required|date', 'end_date' => 'required|date|after_or_equal:start_date',
             'status' => 'required|in:active,inactive,closed,draft',
@@ -53,6 +53,59 @@ Route::middleware(['auth:sanctum', 'api.fresh', 'role:admin'])->prefix('fms')->n
     Route::get('/accounts-payable', fn() => response()->json(\App\Models\AccountsPayable::paginate(15)));
     Route::get('/funds', fn() => response()->json(\App\Models\Fund::paginate(15)));
     Route::get('/procurement', fn() => response()->json(\App\Models\ProcurementRequest::paginate(15)));
+    Route::get('/financial-requests', fn() => response()->json(\App\Models\FinancialRequest::with('budgetPlan')->paginate(15)));
+    // Integration intake: subsystems POST their original request; the source
+    // identity (source_system + source_request_id) is unique so the same
+    // external request can never be imported twice. Nothing is recreated —
+    // the original request ID stays the primary reference.
+    Route::post('/financial-requests/receive', function (Request $r) {
+        $data = $r->validate([
+            'source_system' => 'required|string|max:50|in:'.implode(',', array_keys(\App\Models\FinancialRequest::SOURCES)),
+            'source_request_id' => 'required|string|max:100',
+            'department' => 'required|string|max:255',
+            'request_type' => 'nullable|string|max:50',
+            'budget_plan_id' => 'nullable|exists:budget_plans,id',
+            'amount' => 'required|numeric|min:0.01',
+            'description' => 'required|string|max:5000',
+            'purpose' => 'nullable|string|max:5000',
+            'request_date' => 'nullable|date',
+            'supporting_document' => 'nullable|string|max:500',
+            'metadata' => 'nullable|array',
+        ]);
+        $existing = \App\Models\FinancialRequest::where('source_system', $data['source_system'])
+            ->where('source_request_id', $data['source_request_id'])->first();
+        if ($existing) {
+            return response()->json(['received' => false, 'duplicate' => true, 'record' => $existing], 200);
+        }
+        $budget = ! empty($data['budget_plan_id']) ? \App\Models\BudgetPlan::find($data['budget_plan_id']) : null;
+        if ($budget && ! in_array($budget->status, ['approved', 'active'], true)) {
+            return response()->json(['message' => 'Linked budget is not approved/active.'], 422);
+        }
+        $validation = $budget ? \App\Models\FinancialRequest::budgetValidation($budget, (float) $data['amount']) : null;
+        if ($validation && ! $validation['valid']) {
+            return response()->json(['message' => 'Budget insufficient.', 'validation' => [
+                'approved' => $validation['approved'], 'allocated' => $validation['allocated'],
+                'committed' => $validation['committed'], 'utilized' => $validation['utilized'],
+                'available' => $validation['available'],
+            ]], 422);
+        }
+        $record = \App\Models\FinancialRequest::create([
+            'request_number' => 'FR-'.now()->format('Ymd').'-'.strtoupper(uniqid()),
+            'source_system' => $data['source_system'], 'source_request_id' => $data['source_request_id'],
+            'department' => $data['department'], 'request_type' => $data['request_type'] ?? 'other',
+            'budget_plan_id' => $data['budget_plan_id'] ?? null,
+            'description' => ($data['purpose'] ?? '').(($data['purpose'] ?? '') && $data['description'] ? "\n" : '').$data['description'],
+            'amount' => $data['amount'], 'request_date' => $data['request_date'] ?? today(),
+            'supporting_document' => $data['supporting_document'] ?? null,
+            'metadata' => $data['metadata'] ?? null, 'status' => 'submitted',
+            'prepared_by' => auth()->id(), 'submitted_at' => now(), 'received_at' => now(),
+        ]);
+        \App\Services\AuditService::log('receive', 'financial_requests', (string) $record->id, null,
+            ['source' => $data['source_system'].':'.$data['source_request_id'], 'status' => 'submitted'],
+            'Received '.$data['source_system'].' request '.$data['source_request_id'].' as '.$record->request_number.'.');
+        return response()->json(['received' => true, 'record' => $record->fresh(), 'validation' => $validation
+            ? ['available' => $validation['available'], 'valid' => $validation['valid']] : null], 201);
+    });
     Route::get('/assets', fn() => response()->json(\App\Models\Asset::paginate(15)));
     Route::get('/reports', function () {
         if (session('reports.unlocked') !== true) {

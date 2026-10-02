@@ -5,11 +5,14 @@ namespace App\Http\Controllers\Accountant;
 use App\Http\Controllers\Controller;
 use App\Models\AccountsPayable;
 use App\Models\AuditLog;
+use App\Models\BudgetPlan;
 use App\Models\Expense;
 use App\Models\FinancialRequest;
+use App\Models\PayablePayment;
 use App\Services\AuditService;
 use App\Services\WorkflowService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class PayableController extends Controller
@@ -54,14 +57,6 @@ class PayableController extends Controller
             ->filter()->unique()->sort()->values();
 
         return view('accountant.payables.index', compact('records', 'summary', 'departments'));
-    }
-
-    public function create()
-    {
-        return view('accountant.payables.form', [
-            'record' => new AccountsPayable(),
-            'sources' => $this->sourceOptions(),
-        ]);
     }
 
     /**
@@ -126,56 +121,6 @@ class PayableController extends Controller
         return null;
     }
 
-    public function store(Request $request)
-    {
-        abort_unless(auth()->user()->role === 'accountant', 403);
-        $data = $request->validate($this->rules());
-
-        $source = $this->resolveSource($data['source_kind'], $data['source_id']);
-        $auto = $this->autoFillFromSource($source, $data['source_kind']);
-
-        if (AccountsPayable::where('invoice_number', $data['invoice_number'])
-                ->where('vendor', $auto['vendor'])->exists()) {
-            return back()->withErrors(['invoice_number' => 'This invoice number already exists for this vendor.'])
-                ->withInput();
-        }
-        abort_if((float) $data['amount'] > (float) $auto['approved_amount'], 422,
-            'Payable cannot exceed the approved source amount of ₱'.number_format($auto['approved_amount'], 2).'.');
-
-        $payload = [
-            'invoice_number' => $data['invoice_number'],
-            'invoice_date' => $data['invoice_date'],
-            'due_date' => $data['due_date'],
-            'amount' => $data['amount'],
-            'payment_terms' => $data['payment_terms'],
-            'supporting_document' => $request->hasFile('supporting_document')
-                ? $request->file('supporting_document')->store('payable-docs', 'public') : null,
-            'remarks' => $data['remarks'] ?? null,
-            'vendor' => $auto['vendor'],
-            'category' => $auto['category'],
-            'description' => $auto['description'],
-            'budget_plan_id' => $auto['budget_plan_id'],
-            'fund_id' => $auto['fund_id'],
-            'fund_allocation_id' => $auto['fund_allocation_id'],
-            'expense_id' => $data['source_kind'] === 'expense' ? $source->id : null,
-            'financial_request_id' => $data['source_kind'] === 'financial_request' ? $source->id : null,
-            'amount_paid' => 0,
-            'payment_status' => 'pending',
-            'approval_status' => 'draft',
-            'created_by' => auth()->id(),
-        ];
-
-        $record = AccountsPayable::create($payload);
-        AuditService::log('create', 'accounts_payable', (string) $record->id, null, null,
-            "Accountant ".auth()->user()->name." prepared Payable {$record->invoice_number} from {$data['source_kind']} #{$source->id} (₱".number_format($record->amount, 2).").");
-
-        if ($request->input('action') === 'submit') {
-            WorkflowService::submit($record->fresh(), 'accounts_payable', 'Payable', 'approval_status');
-            return redirect()->route('accountant.payables.index')->with('success', 'Payable submitted for admin approval.');
-        }
-        return redirect()->route('accountant.payables.index')->with('success', 'Payable saved as draft. Unapproved payables cannot become paid transactions.');
-    }
-
     public function show(AccountsPayable $payable)
     {
         $payable->load(['payments', 'budgetPlan', 'fund', 'expense.allocation', 'expense.budgetPlan', 'allocation', 'financialRequest.budgetPlan', 'disbursement']);
@@ -183,110 +128,136 @@ class PayableController extends Controller
         return view('accountant.payables.show', ['record' => $payable, 'history' => $history]);
     }
 
-    public function edit(AccountsPayable $payable)
+    /**
+     * Record a disbursement/payment against an approved payable.
+     * Reuses the AP → Expense sync and fund movement (each peso moved once).
+     * Total paid can never exceed the recorded actual (or the approved ceiling).
+     */
+    public function pay(Request $request, AccountsPayable $payable)
     {
-        abort_if(! in_array($payable->approval_status ?? 'draft', ['draft', 'for_revision', 'revision', 'rejected', 'cancelled'], true), 422, 'Only draft or rejected/revision payables can be edited.');
-        $payable->load(['expense', 'financialRequest']);
-        return view('accountant.payables.form', [
-            'record' => $payable,
-            'sources' => $this->sourceOptions($payable),
+        abort_unless(auth()->user()->role === 'accountant', 403);
+        abort_if(($payable->approval_status ?? 'draft') !== 'approved', 422, 'Only approved payables can be disbursed.');
+        $payable->loadMissing(['financialRequest', 'disbursement']);
+        // Actual-first rule: the approved ceiling authorizes, but only the recorded
+        // actual may be disbursed (FR-flow payables).
+        if ($payable->financial_request_id) {
+            abort_if(! $payable->financialRequest || ! $payable->financialRequest->actual_amount, 422, 'Record the actual expense amount first.');
+        }
+        $ceiling = $payable->financialRequest?->actual_amount
+            ? min((float) $payable->amount, (float) $payable->financialRequest->actual_amount)
+            : (float) $payable->amount;
+        $maxPay = max(0, $ceiling - (float) $payable->amount_paid);
+        abort_if($maxPay <= 0, 422, 'Nothing left to disburse.');
+        $data = $request->validate([
+            'amount' => 'required|numeric|min:0.01|max:'.$maxPay,
+            'payment_date' => 'required|date|before_or_equal:today',
+            'payment_method' => 'nullable|string|max:50',
+            'reference_number' => 'nullable|string|max:100',
+            'remarks' => 'nullable|string|max:1000',
         ]);
+        DB::transaction(function () use ($payable, $data) {
+            PayablePayment::create($data + ['accounts_payable_id' => $payable->id, 'created_by' => auth()->id()]);
+            $payable->increment('amount_paid', $data['amount']);
+            $payable->refresh();
+            $this->syncPaymentStatus($payable->fresh());
+            \App\Services\ApDisbursementService::moveFund($payable->fund_id, (float) $data['amount'], $payable->invoice_number, 'Disbursement for '.$payable->ap_number);
+            \App\Services\ApDisbursementService::syncFromPayablePayment($payable->fresh());
+        });
+        AuditService::log('pay', 'accounts_payable', (string) $payable->id, null, null,
+            "Accountant ".auth()->user()->name." recorded P".number_format($data['amount'], 2)." disbursement to {$payable->ap_number} (Ref: ".($data['reference_number'] ?? '—').').');
+        return back()->with('success', 'Disbursement recorded and synced to Expense & Disbursement Tracking.');
     }
 
-    public function update(Request $request, AccountsPayable $payable)
+    /**
+     * Complete the financial transaction (accountant only).
+     * FR-flow payables only. Requires recorded actual, full disbursement, and
+     * supporting documents. Posts ACTUAL (not approved) budget utilization and
+     * synchronizes Request → APPROVED→COMPLETED, Expense → COMPLETED.
+     */
+    public function complete(Request $request, AccountsPayable $payable)
     {
         abort_unless(auth()->user()->role === 'accountant', 403);
-        abort_if(! in_array($payable->approval_status ?? 'draft', ['draft', 'for_revision', 'revision', 'rejected', 'cancelled'], true), 422, 'Approved/submitted payables cannot be edited directly.');
-        $data = $request->validate($this->rules($payable->id));
 
-        $source = $this->resolveSource($data['source_kind'], $data['source_id']);
-        $auto = $this->autoFillFromSource($source, $data['source_kind']);
+        $payable->loadMissing(['financialRequest.budgetPlan', 'disbursement', 'payments']);
+        $fr = $payable->financialRequest;
+        $actual = $fr?->actual_amount;
+        $expense = $payable->disbursement;
 
-        if (AccountsPayable::where('invoice_number', $data['invoice_number'])
-                ->where('vendor', $auto['vendor'])->where('id', '!=', $payable->id)->exists()) {
-            return back()->withErrors(['invoice_number' => 'This invoice number already exists for this vendor.'])
-                ->withInput();
+        // Validate all prerequisites with messages flashed to session
+        $errors = [];
+        if (($payable->approval_status ?? 'draft') !== 'approved') {
+            $errors[] = 'Only approved payables can be completed.';
         }
-        abort_if((float) $data['amount'] > (float) $auto['approved_amount'], 422,
-            'Payable cannot exceed the approved source amount of ₱'.number_format($auto['approved_amount'], 2).'.');
-
-        $old = $payable->toArray();
-        $payload = [
-            'invoice_number' => $data['invoice_number'],
-            'invoice_date' => $data['invoice_date'],
-            'due_date' => $data['due_date'],
-            'amount' => max((float) $data['amount'], (float) $payable->amount_paid),
-            'payment_terms' => $data['payment_terms'],
-            'remarks' => $data['remarks'] ?? null,
-            'vendor' => $auto['vendor'],
-            'category' => $auto['category'],
-            'description' => $auto['description'],
-            'budget_plan_id' => $auto['budget_plan_id'],
-            'fund_id' => $auto['fund_id'],
-            'fund_allocation_id' => $auto['fund_allocation_id'],
-            'expense_id' => $data['source_kind'] === 'expense' ? $source->id : null,
-            'financial_request_id' => $data['source_kind'] === 'financial_request' ? $source->id : null,
-            'approval_status' => 'draft',
-            'rejection_reason' => null,
-            'revision_number' => ((int) $payable->revision_number) + 1,
-        ];
-        if ($request->hasFile('supporting_document')) {
-            $payload['supporting_document'] = $request->file('supporting_document')->store('payable-docs', 'public');
+        if (! $payable->financial_request_id) {
+            $errors[] = 'Only requests approved through Procurement & Financial Requests can be completed here.';
         }
-        $payable->update($payload);
-        AuditService::log('update', 'accounts_payable', (string) $payable->id, $old, $payable->fresh()->toArray(),
-            "Accountant ".auth()->user()->name." revised Payable #{$payable->invoice_number}.");
-        return redirect()->route('accountant.payables.show', $payable)->with('success', 'Payable revised and saved as draft.');
+        if (! $fr || $fr->status !== 'approved') {
+            $errors[] = 'The linked request must be approved (not completed or rejected).';
+        }
+        if (! $actual || $actual <= 0) {
+            $errors[] = 'Record the actual expense amount first in Expense & Disbursement Tracking.';
+        }
+        if (! $expense) {
+            $errors[] = 'Linked disbursement record is missing.';
+        }
+        $hasDocs = (bool) ($expense?->supporting_document || $expense?->proof_of_payment || $payable->supporting_document);
+        if (! $hasDocs) {
+            $errors[] = 'Attach a supporting document or proof of payment first.';
+        }
+        if ($actual && (float) $payable->amount_paid + 0.009 < $actual) {
+            $errors[] = 'Disbursement must fully cover the actual amount of P'.number_format($actual, 2).' before completion.';
+        }
+
+        if (! empty($errors)) {
+            return redirect()->route('accountant.payables.show', $payable)->withErrors($errors)->withInput();
+        }
+
+        DB::transaction(function () use ($payable, $fr, $expense, $actual) {
+            $locked = AccountsPayable::lockForUpdate()->findOrFail($payable->id);
+            $unused = round((float) $locked->amount - $actual, 2);
+            if ($unused > 0.009) {
+                // Release the unused authorization ceiling — only the actual is spent.
+                $locked->update(['amount' => $actual]);
+            }
+            $locked->update(['payment_status' => 'paid']);
+            $latest = $locked->payments()->latest('id')->first();
+            $expense->update([
+                'amount' => $actual,
+                'payment_status' => 'paid',
+                'payment_date' => $latest->payment_date ?? $expense->payment_date,
+                'payment_method' => $latest->payment_method ?? $expense->payment_method,
+                'payment_reference' => $latest->reference_number ?? $expense->payment_reference,
+                'paid_by' => auth()->id(), 'paid_at' => now(),
+            ]);
+            $fr->update(['status' => 'completed', 'completed_at' => now()]);
+            if ($fr->budget_plan_id && ($budget = BudgetPlan::lockForUpdate()->find($fr->budget_plan_id))) {
+                $budget->increment('utilized_amount', $actual);
+            }
+        });
+
+        AuditService::log('complete', 'accounts_payable', (string) $payable->id, ['payment_status' => $payable->payment_status], ['payment_status' => 'paid'],
+            "Accountant ".auth()->user()->name." completed {$payable->ap_number}: actual P".number_format($actual, 2).", unused P".number_format(max(0, (float) $payable->amount - $actual), 2)." released.");
+        AuditService::log('complete', 'expenses', (string) $expense->id, null, ['payment_status' => 'paid'],
+            "Accountant ".auth()->user()->name." completed Disbursement {$expense->reference_number} (actual P".number_format($actual, 2).').');
+        AuditService::log('complete', 'financial_requests', (string) $fr->id, ['status' => 'approved'], ['status' => 'completed'],
+            "Accountant ".auth()->user()->name." completed {$fr->display_ref}: budget utilized P".number_format($actual, 2).".");
+        WorkflowService::notifyAdmins("Financial transaction {$fr->display_ref} completed.", "Actual P".number_format($actual, 2)." posted to budget utilization by ".auth()->user()->name.".");
+        return redirect()->route('accountant.payables.show', $payable)->with('success', 'Transaction completed. Budget utilization updated with the actual amount.');
     }
 
-    public function submit(AccountsPayable $payable)
+    /** Mirror of the admin AP payment-status rules (server-side, no frontend dependency). */
+    protected function syncPaymentStatus(AccountsPayable $p): void
     {
-        abort_unless(auth()->user()->role === 'accountant', 403);
-        WorkflowService::submit($payable, 'accounts_payable', 'Payable', 'approval_status');
-        return back()->with('success', 'Payable submitted for admin approval. Payment requires admin authorization.');
-    }
-
-    public function cancel(AccountsPayable $payable)
-    {
-        abort_unless(auth()->user()->role === 'accountant', 403);
-        abort_if(! in_array($payable->approval_status, ['submitted', 'under_review'], true), 422, 'Only pending submissions can be cancelled.');
-        $payable->update(['approval_status' => 'draft', 'submitted_at' => null]);
-        AuditService::log('cancel', 'accounts_payable', (string) $payable->id, null, null,
-            "Accountant ".auth()->user()->name." cancelled submission of Payable #{$payable->invoice_number}.");
-        return back()->with('success', 'Submission cancelled.');
+        $remaining = (float) $p->remaining_balance;
+        $status = 'pending';
+        if ($remaining <= 0.009) $status = 'fully_paid';
+        elseif ((float) $p->amount_paid > 0) $status = 'partially_paid';
+        elseif ($p->due_date && $p->due_date < today()) $status = 'overdue';
+        elseif ($p->due_date && $p->due_date->diffInDays(today()) <= 7) $status = 'due_soon';
+        $p->update(['payment_status' => $status]);
     }
 
     // ---------- helpers ----------
-
-    protected function rules(?int $ignoreId = null): array
-    {
-        return [
-            'source_kind' => 'required|in:expense,financial_request',
-            'source_id' => 'required|integer|min:1',
-            'invoice_number' => ['required', 'string', 'max:100',
-                $ignoreId
-                    ? Rule::unique('accounts_payable', 'invoice_number')->ignore($ignoreId)
-                    : 'unique:accounts_payable,invoice_number'],
-            'invoice_date' => 'required|date|before_or_equal:today',
-            'due_date' => 'required|date|after_or_equal:invoice_date',
-            'amount' => 'required|numeric|min:0.01|max:999999999999.99',
-            'payment_terms' => 'required|in:COD,15 Days,30 Days,60 Days,Custom',
-            'supporting_document' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
-            'remarks' => 'nullable|string|max:2000',
-        ];
-    }
-
-    protected function resolveSource(string $kind, int $id): Expense|FinancialRequest
-    {
-        if ($kind === 'expense') {
-            $source = Expense::with(['budgetPlan', 'allocation'])->findOrFail($id);
-            abort_if($source->approval_status !== 'approved', 422, 'Payable must link an approved expense proposal.');
-            return $source;
-        }
-        $source = FinancialRequest::with('budgetPlan')->findOrFail($id);
-        abort_if(! in_array($source->status, ['approved', 'completed'], true), 422, 'Payable must link an approved financial request.');
-        return $source;
-    }
 
     /**
      * Derive every duplicated field from the source — accountant never types these.

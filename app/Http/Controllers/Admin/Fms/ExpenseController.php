@@ -149,6 +149,14 @@ class ExpenseController extends Controller
                     abort_if((float) $expense->amount > $remaining, 422, 'Expense exceeds remaining budget of P'.number_format($remaining, 2).'.');
                 }
                 $expense->update(['approval_status' => 'approved', 'approved_by' => auth()->id(), 'approved_at' => now(), 'reviewed_at' => now(), 'reviewed_by' => auth()->id(), 'admin_remarks' => $request->input('admin_remarks') ?: $expense->admin_remarks]);
+                // Auto-utilization: an approved expense consumes its linked budget.
+                // (AP auto-disbursements are handled by ApDisbursementService instead.)
+                if ($expense->budget_plan_id && ! $expense->related_payable_id) {
+                    $budget = BudgetPlan::lockForUpdate()->find($expense->budget_plan_id);
+                    if ($budget && in_array($budget->status, ['approved', 'active'], true)) {
+                        $budget->increment('utilized_amount', $expense->amount);
+                    }
+                }
             }
             if ($action === 'reject') {
                 $expense->update(['approval_status' => 'rejected', 'rejection_reason' => $request->input('rejection_reason'), 'admin_remarks' => $request->input('admin_remarks') ?: $expense->admin_remarks, 'approved_by' => null, 'approved_at' => null, 'reviewed_at' => now(), 'reviewed_by' => auth()->id(), 'revision_number' => ((int) $expense->revision_number) + 1]);
@@ -208,7 +216,17 @@ class ExpenseController extends Controller
         abort_if($expense->related_payable_id, 422, 'Auto-generated disbursements cannot be deleted directly. Cancel the linked AP instead.');
         abort_if($expense->payment_status === 'paid', 422, 'Paid expenses cannot be deleted.');
         $old = $expense->toArray();
-        $expense->delete();
+        DB::transaction(function () use ($expense) {
+            // Release the budget consumed at approval time.
+            if (($expense->approval_status ?? null) === 'approved' && $expense->budget_plan_id) {
+                $budget = BudgetPlan::lockForUpdate()->find($expense->budget_plan_id);
+                if ($budget) {
+                    $new = max(0.0, (float) $budget->utilized_amount - (float) $expense->amount);
+                    $budget->update(['utilized_amount' => $new]);
+                }
+            }
+            $expense->delete();
+        });
         AuditService::log('delete', 'expenses', (string) $expense->id, $old, null, "Admin ".auth()->user()->name." deleted Expense #{$old['reference_number']}.");
         return redirect()->route('admin.expenses.index')->with('success', 'Expense deleted.');
     }

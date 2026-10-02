@@ -39,7 +39,7 @@ class WorkflowService
      * Submit a draft/rejected/revision record for admin approval.
      * $statusField defaults to 'status', expenses/payables use 'approval_status'.
      */
-    public const PENDING = ['submitted', 'under_review'];
+    public const PENDING = ['submitted', 'under_review', 'for_approval'];
     public const RETURNED = ['rejected', 'for_revision', 'revision'];
 
     /**
@@ -76,7 +76,7 @@ class WorkflowService
         abort_unless(auth()->user() && auth()->user()->role === 'admin', 403, 'Only admin can approve.');
         $current = $model->{$statusField};
         abort_if(in_array($current, ['approved', 'completed', 'paid', 'fully_paid'], true), 422, 'Record is already approved/closed.');
-        abort_if(! in_array($current, ['submitted', 'under_review'], true), 422, 'Only submitted records can be approved.');
+        abort_if(! in_array($current, ['submitted', 'under_review', 'for_approval'], true), 422, 'Only submitted records can be approved.');
 
         $old = $model->toArray();
         DB::transaction(function () use ($model, $statusField, $extra) {
@@ -102,7 +102,7 @@ class WorkflowService
         abort_if(empty($reason), 422, 'Rejection reason is required.');
         $current = $model->{$statusField};
         abort_if(in_array($current, ['approved', 'completed', 'paid'], true), 422, 'Approved records cannot be rejected.');
-        abort_if(! in_array($current, ['submitted', 'under_review'], true), 422, 'Only submitted records can be rejected.');
+        abort_if(! in_array($current, ['submitted', 'under_review', 'for_approval'], true), 422, 'Only submitted records can be rejected.');
 
         $old = $model->toArray();
         $rev = (int) ($model->revision_number ?? 0);
@@ -160,6 +160,7 @@ class WorkflowService
     {
         return match ($status) {
             'draft' => 'Draft', 'submitted', 'under_review' => 'Pending Approval',
+            'for_approval' => 'For Admin Approval',
             'approved', 'active' => 'Approved', 'rejected' => 'Rejected',
             'for_revision', 'revision' => 'For Revision', 'cancelled' => 'Cancelled',
             'for_disbursement' => 'For Disbursement', 'partially_paid' => 'Partially Paid',

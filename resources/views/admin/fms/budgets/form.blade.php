@@ -11,8 +11,8 @@
         @if($plan->exists) @method('PUT') @endif
         <div class="form-group"><label>Budget Name <span class="required">*</span></label><input type="text" name="budget_name" class="form-control" value="{{ old('budget_name', $plan->budget_name) }}" required></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-            <div class="form-group"><label>Fiscal Year <span class="required">*</span></label><input type="text" name="fiscal_year" class="form-control" placeholder="2026-2027" value="{{ old('fiscal_year', $plan->fiscal_year) }}" required></div>
-            <div class="form-group"><label>Department</label><input type="text" name="department" class="form-control" value="{{ old('department', $plan->department) }}"></div>
+            <div class="form-group"><label>Academic Year <span class="required">*</span></label>@if(($academicYears ?? collect())->count())<select name="academic_year" class="form-control" required><option value="">Select Year</option>@foreach($academicYears as $y)<option value="{{ $y }}" {{ old('academic_year', $plan->academic_year)===$y?'selected':'' }}>{{ $y }}</option>@endforeach</select>@else<input type="text" name="academic_year" class="form-control" placeholder="2026-2027" value="{{ old('academic_year', $plan->academic_year) }}" required>@endif</div>
+            <div class="form-group"><label>Department</label>@if(($departments ?? collect())->count())<select name="department" class="form-control"><option value="">Select Department</option>@foreach($departments as $d)<option value="{{ $d }}" {{ old('department', $plan->department)===$d?'selected':'' }}>{{ $d }}</option>@endforeach</select>@else<input type="text" name="department" class="form-control" value="{{ old('department', $plan->department) }}">@endif</div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
             <div class="form-group"><label>Budget Category <span class="required">*</span></label>

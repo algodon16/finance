@@ -24,18 +24,33 @@ class FinancialRequestController extends Controller
         $q = FinancialRequest::with(['preparer', 'decider', 'student', 'budgetPlan'])->orderByDesc('created_at');
         if ($request->filled('request_type')) $q->where('request_type', $request->request_type);
         if ($request->filled('status')) $q->where('status', $request->status);
+        if ($request->filled('source_system')) $q->where('source_system', $request->source_system);
         if ($request->filled('search')) {
             $s = $request->search;
-            $q->where(fn($w) => $w->where('request_number', 'ilike', "%{$s}%")->orWhere('description', 'ilike', "%{$s}%"));
+            $q->where(fn($w) => $w->where('request_number', 'ilike', "%{$s}%")
+                ->orWhere('source_request_id', 'ilike', "%{$s}%")
+                ->orWhere('description', 'ilike', "%{$s}%")
+                ->orWhere('department', 'ilike', "%{$s}%"));
         }
         $records = $q->paginate(12)->withQueryString();
+        // Per-row budget availability (uses the same committed math as validation).
+        $validMap = [];
+        foreach ($records as $r) {
+            $validMap[$r->id] = $r->budget_plan_id
+                ? FinancialRequest::budgetValidation($r->budgetPlan, (float) $r->amount, $r->id)
+                : null;
+        }
         $summary = [
-            'draft' => (int) FinancialRequest::where('status', 'draft')->count(),
-            'pending' => (int) FinancialRequest::whereIn('status', ['submitted', 'under_review'])->count(),
-            'approved' => (int) FinancialRequest::whereIn('status', ['approved', 'completed'])->count(),
-            'revision' => (int) FinancialRequest::whereIn('status', ['for_revision', 'revision', 'rejected'])->count(),
+            'incoming' => (int) FinancialRequest::where('status', 'submitted')->count(),
+            'review' => (int) FinancialRequest::where('status', 'under_review')->count(),
+            'approved' => (int) FinancialRequest::where('status', 'approved')->count(),
+            'completed' => (int) FinancialRequest::where('status', 'completed')->count(),
+            'returned' => (int) FinancialRequest::whereIn('status', ['rejected', 'for_revision', 'revision'])->count(),
+            'impact' => (float) FinancialRequest::whereIn('status', ['approved', 'completed'])->sum('amount'),
         ];
-        return view('accountant.financial-requests.index', compact('records', 'summary'));
+        $departments = Department::active()->orderBy('name')->pluck('name');
+        $budgets = BudgetPlan::whereIn('status', ['approved', 'active'])->orderByDesc('id')->limit(200)->get();
+        return view('accountant.financial-requests.index', compact('records', 'summary', 'validMap', 'departments', 'budgets'));
     }
 
     public function create()
@@ -74,7 +89,15 @@ class FinancialRequestController extends Controller
             'items.*.supplier' => 'nullable|string|max:255',
             'items.*.quantity' => 'required|integer|min:1|max:1000000',
             'items.*.unit_cost' => 'required|numeric|min:0.01|max:999999999999.99',
+            'source_system' => 'nullable|string|max:50|in:'.implode(',', array_keys(FinancialRequest::SOURCES)),
+            'source_request_id' => 'nullable|string|max:100',
         ]);
+        // External source identity must be unique (never import twice).
+        if (! empty($data['source_request_id'])) {
+            $dup = FinancialRequest::where('source_system', $data['source_system'] ?? 'internal')
+                ->where('source_request_id', $data['source_request_id'])->exists();
+            abort_if($dup, 422, 'This source request was already received ('.($data['source_system'] ?? 'internal').' '.$data['source_request_id'].').');
+        }
         $map = ['budget' => BudgetPlan::class, 'allocation' => FundAllocation::class, 'expense' => Expense::class, 'payable' => AccountsPayable::class];
         $refType = null; $refId = null;
         if (! empty($data['reference_kind']) && $data['reference_kind'] !== 'none' && ! empty($data['reference_id'])) {
@@ -127,6 +150,7 @@ class FinancialRequestController extends Controller
         $data['request_number'] = 'FR-'.now()->format('Ymd').'-'.strtoupper(uniqid());
         $data['status'] = 'draft';
         $data['prepared_by'] = auth()->id();
+        $data['received_at'] = now();
         $data['reference_type'] = $refType;
         $data['reference_id'] = $refId;
         $data['budget_plan_id'] = $budgetPlanId;
@@ -144,18 +168,24 @@ class FinancialRequestController extends Controller
 
     public function show(FinancialRequest $financialRequest)
     {
-        $financialRequest->load(['preparer', 'decider', 'student', 'budgetPlan']);
+        $financialRequest->load(['preparer', 'decider', 'student', 'budgetPlan', 'payable.disbursement', 'payable.payments']);
         $linked = null;
         if ($financialRequest->reference_type && $financialRequest->reference_id && class_exists($financialRequest->reference_type)) {
             try { $linked = $financialRequest->reference_type::find($financialRequest->reference_id); } catch (\Throwable $e) {}
         }
         $history = AuditLog::where('module', 'financial_requests')->where('record_id', (string) $financialRequest->id)->latest('id')->take(20)->get();
-        return view('accountant.financial-requests.show', ['record' => $financialRequest, 'linked' => $linked, 'history' => $history]);
+        $validation = $financialRequest->budget_plan_id
+            ? FinancialRequest::budgetValidation($financialRequest->budgetPlan, (float) $financialRequest->amount, $financialRequest->id)
+            : null;
+        return view('accountant.financial-requests.show', ['record' => $financialRequest, 'linked' => $linked, 'history' => $history, 'validation' => $validation]);
     }
 
     public function edit(FinancialRequest $financialRequest)
     {
         abort_if(! $financialRequest->isEditable(), 422, 'Only draft or for-revision requests can be edited.');
+        // External records are owned by the source subsystem — never rewritten here.
+        // Corrections go back through return/withdraw, not direct edits.
+        abort_if(($financialRequest->source_system ?? 'internal') !== 'internal', 422, 'Received requests cannot be edited here. Return it to the source subsystem instead.');
         $kindMap = [BudgetPlan::class => 'budget', FundAllocation::class => 'allocation', Expense::class => 'expense', AccountsPayable::class => 'payable'];
         return view('accountant.financial-requests.form', [
             'record' => $financialRequest,
@@ -176,6 +206,7 @@ class FinancialRequestController extends Controller
     {
         abort_unless(auth()->user()->role === 'accountant', 403);
         abort_if(! $financialRequest->isEditable(), 422, 'Approved/submitted requests cannot be edited directly.');
+        abort_if(($financialRequest->source_system ?? 'internal') !== 'internal', 422, 'Received requests cannot be edited here. Return it to the source subsystem instead.');
         $data = $request->validate([
             'request_type' => 'required|in:'.implode(',', FinancialRequest::TYPES),
             'description' => 'required|string|max:5000',
@@ -260,7 +291,14 @@ class FinancialRequestController extends Controller
     {
         abort_unless(auth()->user()->role === 'accountant', 403);
         abort_if((float) $financialRequest->amount <= 0, 422, 'Add at least one budget item with amount greater than 0 before submitting.');
+        // Budget validation gate: linked budget must cover the request.
+        if ($financialRequest->budget_plan_id) {
+            $v = FinancialRequest::budgetValidation($financialRequest->budgetPlan, (float) $financialRequest->amount, $financialRequest->id);
+            abort_if(! $v, 422, 'Linked budget is not approved/active.');
+            abort_if(! $v['valid'], 422, 'Budget insufficient: requested P'.number_format((float) $financialRequest->amount, 2).' exceeds available P'.number_format($v['available'], 2).' (BR-'.$financialRequest->budget_plan_id.').');
+        }
         WorkflowService::submit($financialRequest, 'financial_requests', 'Financial Request');
+        $financialRequest->update(['reviewed_at' => now(), 'reviewed_by' => auth()->id()]);
         return back()->with('success', 'Financial request submitted for admin approval.');
     }
 
@@ -271,6 +309,72 @@ class FinancialRequestController extends Controller
         $financialRequest->update(['status' => 'draft', 'submitted_at' => null]);
         AuditService::log('cancel', 'financial_requests', (string) $financialRequest->id, null, null, "Accountant ".auth()->user()->name." cancelled submission of Financial Request {$financialRequest->request_number}.");
         return back()->with('success', 'Submission cancelled.');
+    }
+
+    /**
+     * Accountant review: save recommended amount + financial remarks, then
+     * either forward to admin or return to the source subsystem.
+     * The original request content is never rewritten — only review metadata.
+     */
+    public function review(Request $request, FinancialRequest $financialRequest)
+    {
+        abort_unless(auth()->user()->role === 'accountant', 403);
+        abort_if(! in_array($financialRequest->status, ['submitted', 'under_review'], true), 422, 'Only received requests can be reviewed.');
+        $data = $request->validate([
+            'recommended_amount' => 'required|numeric|min:0.01|max:999999999999.99',
+            'financial_remarks' => 'nullable|string|max:60',
+            'decision' => 'required|in:forward,return',
+        ]);
+        if ($data['decision'] === 'return' && empty(trim((string) ($data['financial_remarks'] ?? '')))) {
+            return back()->withErrors(['financial_remarks' => 'Remarks are required when returning to the source.'])->withInput();
+        }
+        // Budget gate applies to the recommended amount as well.
+        if ($financialRequest->budget_plan_id) {
+            $v = FinancialRequest::budgetValidation($financialRequest->budgetPlan, (float) $data['recommended_amount'], $financialRequest->id);
+            abort_if(! $v, 422, 'Linked budget is not approved/active.');
+            abort_if(! $v['valid'], 422, 'Budget insufficient: recommended P'.number_format((float) $data['recommended_amount'], 2).' exceeds available P'.number_format($v['available'], 2).'.');
+        }
+        $meta = $financialRequest->metadata ?? [];
+        $meta['recommended_amount'] = (float) $data['recommended_amount'];
+        $meta['financial_remarks'] = $data['financial_remarks'] ?? null;
+        $old = $financialRequest->status;
+        if ($data['decision'] === 'return') {
+            $financialRequest->update([
+                'status' => 'for_revision', 'metadata' => $meta,
+                'admin_remarks' => $data['financial_remarks'],
+                'reviewed_at' => now(), 'reviewed_by' => auth()->id(),
+                'revision_number' => ((int) $financialRequest->revision_number) + 1,
+            ]);
+            AuditService::log('return', 'financial_requests', (string) $financialRequest->id, ['status' => $old], ['status' => 'for_revision'],
+                "Accountant ".auth()->user()->name." returned {$financialRequest->display_ref} to source: {$data['financial_remarks']}");
+            return back()->with('success', 'Request returned to source subsystem.');
+        }
+        $financialRequest->update([
+            'status' => 'under_review', 'metadata' => $meta,
+            'reviewed_at' => now(), 'reviewed_by' => auth()->id(),
+        ]);
+        AuditService::log('review', 'financial_requests', (string) $financialRequest->id, ['status' => $old],
+            ['status' => 'under_review', 'recommended_amount' => (float) $data['recommended_amount']],
+            "Accountant ".auth()->user()->name." reviewed {$financialRequest->display_ref}: recommended P".number_format((float) $data['recommended_amount'], 2).". Forwarded to admin.");
+        WorkflowService::notifyAdmins("Financial request {$financialRequest->display_ref} forwarded for approval.", "Recommended P".number_format((float) $data['recommended_amount'], 2).".");
+        return back()->with('success', 'Review saved. Request forwarded to admin.');
+    }
+
+    /** Demo intake: simulate a subsystem request through the real validation path. */
+    public function simulate(Request $request)
+    {
+        abort_unless(auth()->user()->role === 'accountant', 403);
+        $data = $request->validate([
+            'source_system' => 'required|string|max:50|in:'.implode(',', array_keys(array_filter(FinancialRequest::SOURCES, fn($k) => $k !== 'internal', ARRAY_FILTER_USE_KEY))),
+            'request_type' => 'required|string|max:50',
+            'department' => 'required|string|max:255|exists:departments,name',
+            'source_request_id' => 'nullable|string|max:100',
+            'purpose' => 'required|string|max:5000',
+            'amount' => 'required|numeric|min:0.01|max:999999999999.99',
+            'budget_plan_id' => 'required|exists:budget_plans,id',
+        ]);
+        $record = FinancialRequest::receiveSimulated($data, auth()->id());
+        return redirect()->route('accountant.financial-requests.show', $record)->with('success', 'Demo request received as '.$record->display_ref.'.');
     }
 
     /** Procurement tab of Procurement and Financial Requests — student procurement requests (read-only). */
@@ -311,7 +415,7 @@ class FinancialRequestController extends Controller
                 'found' => true,
                 'kind' => $kind,
                 'id' => $rec->id,
-                'label' => "#{$rec->id} {$rec->budget_name} ({$rec->fiscal_year})",
+                'label' => "#{$rec->id} {$rec->budget_name} ({$rec->academic_year})",
                 'department' => $rec->department,
                 'status' => $rec->status,
                 'allocated' => (float) $rec->allocated_amount,
@@ -390,7 +494,7 @@ class FinancialRequestController extends Controller
             ->map(fn($b) => [
                 'id' => $b->id,
                 'name' => $b->budget_name,
-                'fiscal_year' => $b->fiscal_year,
+                'academic_year' => $b->academic_year,
                 'status' => $b->status,
                 'allocated' => (float) $b->allocated_amount,
                 'used' => (float) $b->utilized_amount,

@@ -155,16 +155,23 @@ Route::middleware(['auth', 'otp.verified'])->group(function () {
         Route::get('/accounts-receivable/{id}', [AccountReceivableController::class, 'show'])->name('accounts-receivable.show');
 
         // Budget Planning (accountant prepares, admin approves)
+        // Hub: Overview / Requests / Planning (numeric IDs only — unknown slugs 404 instead of 500)
+        Route::get('/budgets/overview', [\App\Http\Controllers\Accountant\BudgetPlanController::class, 'overview'])->name('budgets.overview');
+        Route::get('/budgets/requests', [\App\Http\Controllers\Accountant\BudgetPlanController::class, 'requests'])->name('budgets.requests');
+        Route::get('/budgets/planning', [\App\Http\Controllers\Accountant\BudgetPlanController::class, 'planning'])->name('budgets.planning');
+        Route::get('/budgets/history', [\App\Http\Controllers\Accountant\BudgetPlanController::class, 'history'])->name('budgets.history');
         Route::get('/budgets', [\App\Http\Controllers\Accountant\BudgetPlanController::class, 'index'])->name('budgets.index');
         Route::get('/budgets/create', [\App\Http\Controllers\Accountant\BudgetPlanController::class, 'create'])->name('budgets.create');
         Route::post('/budgets', [\App\Http\Controllers\Accountant\BudgetPlanController::class, 'store'])->name('budgets.store');
-        Route::get('/budgets/{budget}', [\App\Http\Controllers\Accountant\BudgetPlanController::class, 'show'])->name('budgets.show');
-        Route::get('/budgets/{budget}/edit', [\App\Http\Controllers\Accountant\BudgetPlanController::class, 'edit'])->name('budgets.edit');
-        Route::put('/budgets/{budget}', [\App\Http\Controllers\Accountant\BudgetPlanController::class, 'update'])->name('budgets.update');
-        Route::post('/budgets/{budget}/submit', [\App\Http\Controllers\Accountant\BudgetPlanController::class, 'submit'])->name('budgets.submit');
-        Route::post('/budgets/{budget}/cancel', [\App\Http\Controllers\Accountant\BudgetPlanController::class, 'cancel'])->name('budgets.cancel');
-        Route::post('/budgets/{budget}/duplicate', [\App\Http\Controllers\Accountant\BudgetPlanController::class, 'duplicate'])->name('budgets.duplicate');
-        Route::delete('/budgets/{budget}/draft', [\App\Http\Controllers\Accountant\BudgetPlanController::class, 'destroyDraft'])->name('budgets.draft.destroy');
+        Route::post('/budgets/{budget}/review', [\App\Http\Controllers\Accountant\BudgetPlanController::class, 'review'])->name('budgets.review')->whereNumber('budget');
+        Route::post('/budgets/{budget}/return-review', [\App\Http\Controllers\Accountant\BudgetPlanController::class, 'returnForRevision'])->name('budgets.return-review')->whereNumber('budget');
+        Route::get('/budgets/{budget}', [\App\Http\Controllers\Accountant\BudgetPlanController::class, 'show'])->name('budgets.show')->whereNumber('budget');
+        Route::get('/budgets/{budget}/edit', [\App\Http\Controllers\Accountant\BudgetPlanController::class, 'edit'])->name('budgets.edit')->whereNumber('budget');
+        Route::put('/budgets/{budget}', [\App\Http\Controllers\Accountant\BudgetPlanController::class, 'update'])->name('budgets.update')->whereNumber('budget');
+        Route::post('/budgets/{budget}/submit', [\App\Http\Controllers\Accountant\BudgetPlanController::class, 'submit'])->name('budgets.submit')->whereNumber('budget');
+        Route::post('/budgets/{budget}/cancel', [\App\Http\Controllers\Accountant\BudgetPlanController::class, 'cancel'])->name('budgets.cancel')->whereNumber('budget');
+        Route::post('/budgets/{budget}/duplicate', [\App\Http\Controllers\Accountant\BudgetPlanController::class, 'duplicate'])->name('budgets.duplicate')->whereNumber('budget');
+        Route::delete('/budgets/{budget}/draft', [\App\Http\Controllers\Accountant\BudgetPlanController::class, 'destroyDraft'])->name('budgets.draft.destroy')->whereNumber('budget');
 
         // Fund Allocation
         Route::get('/fund-allocations', [\App\Http\Controllers\Accountant\FundAllocationController::class, 'index'])->name('fund-allocations.index');
@@ -176,26 +183,18 @@ Route::middleware(['auth', 'otp.verified'])->group(function () {
         Route::post('/fund-allocations/{fundAllocation}/submit', [\App\Http\Controllers\Accountant\FundAllocationController::class, 'submit'])->name('fund-allocations.submit');
         Route::post('/fund-allocations/{fundAllocation}/cancel', [\App\Http\Controllers\Accountant\FundAllocationController::class, 'cancel'])->name('fund-allocations.cancel');
 
-        // Expense and Disbursement proposals
+        // Expense and Disbursement Tracking (auto disbursements from approved requests)
         Route::get('/expenses', [\App\Http\Controllers\Accountant\ExpenseProposalController::class, 'index'])->name('expenses.index');
-        Route::get('/expenses/create', [\App\Http\Controllers\Accountant\ExpenseProposalController::class, 'create'])->name('expenses.create');
-        Route::post('/expenses', [\App\Http\Controllers\Accountant\ExpenseProposalController::class, 'store'])->name('expenses.store');
         Route::get('/expenses/{expense}', [\App\Http\Controllers\Accountant\ExpenseProposalController::class, 'show'])->name('expenses.show');
-        Route::get('/expenses/{expense}/edit', [\App\Http\Controllers\Accountant\ExpenseProposalController::class, 'edit'])->name('expenses.edit');
-        Route::put('/expenses/{expense}', [\App\Http\Controllers\Accountant\ExpenseProposalController::class, 'update'])->name('expenses.update');
-        Route::post('/expenses/{expense}/submit', [\App\Http\Controllers\Accountant\ExpenseProposalController::class, 'submit'])->name('expenses.submit');
-        Route::post('/expenses/{expense}/cancel', [\App\Http\Controllers\Accountant\ExpenseProposalController::class, 'cancel'])->name('expenses.cancel');
+        Route::get('/expenses/{expense}/record-data', [\App\Http\Controllers\Accountant\ExpenseProposalController::class, 'recordData'])->name('expenses.record-data');
+        Route::post('/expenses/{expense}/record-actual', [\App\Http\Controllers\Accountant\ExpenseProposalController::class, 'recordActual'])->name('expenses.record-actual');
 
         // Accounts Payable
         Route::get('/payables', [\App\Http\Controllers\Accountant\PayableController::class, 'index'])->name('payables.index');
-        Route::get('/payables/create', [\App\Http\Controllers\Accountant\PayableController::class, 'create'])->name('payables.create');
         Route::get('/payables/source-preview', [\App\Http\Controllers\Accountant\PayableController::class, 'sourcePreview'])->name('payables.source-preview');
-        Route::post('/payables', [\App\Http\Controllers\Accountant\PayableController::class, 'store'])->name('payables.store');
         Route::get('/payables/{payable}', [\App\Http\Controllers\Accountant\PayableController::class, 'show'])->name('payables.show');
-        Route::get('/payables/{payable}/edit', [\App\Http\Controllers\Accountant\PayableController::class, 'edit'])->name('payables.edit');
-        Route::put('/payables/{payable}', [\App\Http\Controllers\Accountant\PayableController::class, 'update'])->name('payables.update');
-        Route::post('/payables/{payable}/submit', [\App\Http\Controllers\Accountant\PayableController::class, 'submit'])->name('payables.submit');
-        Route::post('/payables/{payable}/cancel', [\App\Http\Controllers\Accountant\PayableController::class, 'cancel'])->name('payables.cancel');
+        Route::post('/payables/{payable}/pay', [\App\Http\Controllers\Accountant\PayableController::class, 'pay'])->name('payables.pay');
+        Route::post('/payables/{payable}/complete', [\App\Http\Controllers\Accountant\PayableController::class, 'complete'])->name('payables.complete');
 
         // Financial Requests (centralized)
         Route::get('/financial-requests', [\App\Http\Controllers\Accountant\FinancialRequestController::class, 'index'])->name('financial-requests.index');
@@ -209,6 +208,8 @@ Route::middleware(['auth', 'otp.verified'])->group(function () {
         Route::get('/financial-requests/{financialRequest}/edit', [\App\Http\Controllers\Accountant\FinancialRequestController::class, 'edit'])->name('financial-requests.edit');
         Route::put('/financial-requests/{financialRequest}', [\App\Http\Controllers\Accountant\FinancialRequestController::class, 'update'])->name('financial-requests.update');
         Route::post('/financial-requests/{financialRequest}/submit', [\App\Http\Controllers\Accountant\FinancialRequestController::class, 'submit'])->name('financial-requests.submit');
+        Route::post('/financial-requests/{financialRequest}/review', [\App\Http\Controllers\Accountant\FinancialRequestController::class, 'review'])->name('financial-requests.review');
+        Route::post('/financial-requests/simulate', [\App\Http\Controllers\Accountant\FinancialRequestController::class, 'simulate'])->name('financial-requests.simulate');
         Route::post('/financial-requests/{financialRequest}/cancel', [\App\Http\Controllers\Accountant\FinancialRequestController::class, 'cancel'])->name('financial-requests.cancel');
         Route::get('/procurement-requests', [\App\Http\Controllers\Accountant\FinancialRequestController::class, 'procurement'])->name('procurement.index');
 
@@ -282,18 +283,25 @@ Route::middleware(['auth', 'otp.verified'])->group(function () {
         // ---- BCP Financial Management System (admin-only modules) ----
         Route::get('/budgets/ai', [\App\Http\Controllers\Admin\Fms\BudgetController::class, 'ai'])->name('budgets.ai');
         Route::post('/budgets/ai', [\App\Http\Controllers\Admin\Fms\BudgetController::class, 'aiRecommend'])->name('budgets.ai.calculate');
+        // Budget Requests inbox (requests forwarded by accountant for admin approval)
+        Route::get('/budgets/overview', [\App\Http\Controllers\Admin\Fms\BudgetController::class, 'overview'])->name('budgets.overview');
+        Route::get('/budgets/requests', [\App\Http\Controllers\Admin\Fms\BudgetController::class, 'requests'])->name('budgets.requests');
+        Route::get('/budgets/history', [\App\Http\Controllers\Admin\Fms\BudgetController::class, 'history'])->name('budgets.history');
+        Route::post('/budgets/{budget}/approve-request', [\App\Http\Controllers\Admin\Fms\BudgetController::class, 'approveRequest'])->name('budgets.approve-request')->whereNumber('budget');
+        Route::post('/budgets/{budget}/reject-request', [\App\Http\Controllers\Admin\Fms\BudgetController::class, 'rejectRequest'])->name('budgets.reject-request')->whereNumber('budget');
+        Route::post('/budgets/{budget}/return-request', [\App\Http\Controllers\Admin\Fms\BudgetController::class, 'returnRequest'])->name('budgets.return-request')->whereNumber('budget');
         Route::get('/budgets', [\App\Http\Controllers\Admin\Fms\BudgetController::class, 'index'])->name('budgets.index');
         Route::get('/budgets/create', [\App\Http\Controllers\Admin\Fms\BudgetController::class, 'create'])->name('budgets.create');
         Route::post('/budgets', [\App\Http\Controllers\Admin\Fms\BudgetController::class, 'store'])->name('budgets.store');
-        Route::get('/budgets/{budget}', [\App\Http\Controllers\Admin\Fms\BudgetController::class, 'show'])->name('budgets.show');
-        Route::get('/budgets/{budget}/edit', [\App\Http\Controllers\Admin\Fms\BudgetController::class, 'edit'])->name('budgets.edit');
-        Route::put('/budgets/{budget}', [\App\Http\Controllers\Admin\Fms\BudgetController::class, 'update'])->name('budgets.update');
-        Route::delete('/budgets/{budget}', [\App\Http\Controllers\Admin\Fms\BudgetController::class, 'destroy'])->name('budgets.destroy');
-        Route::post('/budgets/{budget}/allocate', [\App\Http\Controllers\Admin\Fms\BudgetController::class, 'allocate'])->name('budgets.allocate');
-        Route::delete('/budgets/{budget}/allocations/{allocation}', [\App\Http\Controllers\Admin\Fms\BudgetController::class, 'destroyAllocation'])->name('budgets.allocations.destroy');
-        Route::post('/budgets/{budget}/approve', [\App\Http\Controllers\Admin\Fms\BudgetController::class, 'approve'])->name('budgets.approve');
-        Route::post('/budgets/{budget}/reject', [\App\Http\Controllers\Admin\Fms\BudgetController::class, 'reject'])->name('budgets.reject');
-        Route::post('/budgets/{budget}/for-revision', [\App\Http\Controllers\Admin\Fms\BudgetController::class, 'forRevision'])->name('budgets.for-revision');
+        Route::get('/budgets/{budget}', [\App\Http\Controllers\Admin\Fms\BudgetController::class, 'show'])->name('budgets.show')->whereNumber('budget');
+        Route::get('/budgets/{budget}/edit', [\App\Http\Controllers\Admin\Fms\BudgetController::class, 'edit'])->name('budgets.edit')->whereNumber('budget');
+        Route::put('/budgets/{budget}', [\App\Http\Controllers\Admin\Fms\BudgetController::class, 'update'])->name('budgets.update')->whereNumber('budget');
+        Route::delete('/budgets/{budget}', [\App\Http\Controllers\Admin\Fms\BudgetController::class, 'destroy'])->name('budgets.destroy')->whereNumber('budget');
+        Route::post('/budgets/{budget}/allocate', [\App\Http\Controllers\Admin\Fms\BudgetController::class, 'allocate'])->name('budgets.allocate')->whereNumber('budget');
+        Route::delete('/budgets/{budget}/allocations/{allocation}', [\App\Http\Controllers\Admin\Fms\BudgetController::class, 'destroyAllocation'])->name('budgets.allocations.destroy')->whereNumber(['budget', 'allocation']);
+        Route::post('/budgets/{budget}/approve', [\App\Http\Controllers\Admin\Fms\BudgetController::class, 'approve'])->name('budgets.approve')->whereNumber('budget');
+        Route::post('/budgets/{budget}/reject', [\App\Http\Controllers\Admin\Fms\BudgetController::class, 'reject'])->name('budgets.reject')->whereNumber('budget');
+        Route::post('/budgets/{budget}/for-revision', [\App\Http\Controllers\Admin\Fms\BudgetController::class, 'forRevision'])->name('budgets.for-revision')->whereNumber('budget');
 
         Route::get('/revenues/export', [\App\Http\Controllers\Admin\Fms\RevenueController::class, 'export'])->name('revenues.export');
         Route::get('/revenues', [\App\Http\Controllers\Admin\Fms\RevenueController::class, 'index'])->name('revenues.index');
@@ -337,16 +345,12 @@ Route::middleware(['auth', 'otp.verified'])->group(function () {
 
         Route::get('/funds', [\App\Http\Controllers\Admin\Fms\FundController::class, 'index'])->name('funds.index');
         Route::get('/funds/create', [\App\Http\Controllers\Admin\Fms\FundController::class, 'create'])->name('funds.create');
-        Route::get('/funds/budget-preview', [\App\Http\Controllers\Admin\Fms\FundController::class, 'budgetPreview'])->name('funds.budget-preview');
         Route::post('/funds', [\App\Http\Controllers\Admin\Fms\FundController::class, 'store'])->name('funds.store');
         Route::get('/funds/{fund}', [\App\Http\Controllers\Admin\Fms\FundController::class, 'show'])->name('funds.show');
         Route::get('/funds/{fund}/edit', [\App\Http\Controllers\Admin\Fms\FundController::class, 'edit'])->name('funds.edit');
         Route::put('/funds/{fund}', [\App\Http\Controllers\Admin\Fms\FundController::class, 'update'])->name('funds.update');
+        Route::delete('/funds/{fund}', [\App\Http\Controllers\Admin\Fms\FundController::class, 'destroy'])->name('funds.destroy');
         Route::post('/funds/{fund}/transactions', [\App\Http\Controllers\Admin\Fms\FundController::class, 'transaction'])->name('funds.transactions');
-        Route::post('/funds/{fund}/allocate', [\App\Http\Controllers\Admin\Fms\FundController::class, 'allocate'])->name('funds.allocate');
-        Route::post('/funds/allocate-multi', [\App\Http\Controllers\Admin\Fms\FundController::class, 'allocateMulti'])->name('funds.allocate-multi');
-        Route::post('/funds/allocations/{allocation}/approve', [\App\Http\Controllers\Admin\Fms\FundController::class, 'approveAllocation'])->name('funds.allocations.approve');
-        Route::post('/funds/allocations/{allocation}/reject', [\App\Http\Controllers\Admin\Fms\FundController::class, 'rejectAllocation'])->name('funds.allocations.reject');
 
         Route::get('/procurement', [\App\Http\Controllers\Admin\Fms\ProcurementController::class, 'index'])->name('procurement.index');
         Route::get('/procurement/create', [\App\Http\Controllers\Admin\Fms\ProcurementController::class, 'create'])->name('procurement.create');
@@ -359,6 +363,8 @@ Route::middleware(['auth', 'otp.verified'])->group(function () {
         Route::get('/financial-requests/{request}', [\App\Http\Controllers\Admin\Fms\ProcurementController::class, 'showFinancialRequest'])->name('financial-requests.show');
         Route::post('/financial-requests/{request}/approve', [\App\Http\Controllers\Admin\Fms\ProcurementController::class, 'approveFinancialRequest'])->name('financial-requests.approve');
         Route::post('/financial-requests/{request}/reject', [\App\Http\Controllers\Admin\Fms\ProcurementController::class, 'rejectFinancialRequest'])->name('financial-requests.reject');
+        Route::post('/financial-requests/{request}/return', [\App\Http\Controllers\Admin\Fms\ProcurementController::class, 'returnFinancialRequest'])->name('financial-requests.return');
+        Route::post('/financial-requests/simulate', [\App\Http\Controllers\Admin\Fms\ProcurementController::class, 'simulateFinancialRequest'])->name('financial-requests.simulate');
 
         Route::get('/assets', [\App\Http\Controllers\Admin\Fms\AssetController::class, 'index'])->name('assets.index');
         Route::get('/assets/create', [\App\Http\Controllers\Admin\Fms\AssetController::class, 'create'])->name('assets.create');

@@ -45,6 +45,9 @@
         <a href="{{ route('admin.expenses.index', ['approval_status' => 'submitted']) }}" class="fms-stat fms-stat-link"><h4>Pending Expenses</h4><p class="val">{{ $pendingExpenses ?? 0 }}</p></a>
         <a href="{{ route('admin.payables.index', ['approval_status' => 'submitted']) }}" class="fms-stat fms-stat-link"><h4>Pending Payables</h4><p class="val">{{ $pendingPayables ?? 0 }}</p></a>
         <a href="{{ route('admin.financial-requests.index', ['status' => 'submitted']) }}" class="fms-stat fms-stat-link"><h4>Pending Financial Requests</h4><p class="val">{{ $pendingFinancialRequests ?? 0 }}</p></a>
+        <a href="{{ route('admin.financial-requests.index', ['status' => 'approved']) }}" class="fms-stat fms-stat-link"><h4>Approved Requests</h4><p class="val">{{ $approvedRequests ?? 0 }}</p><p class="sub">₱{{ number_format($approvedAmount ?? 0, 2) }} authorized</p></a>
+        <a href="{{ route('admin.expenses.index') }}" class="fms-stat fms-stat-link"><h4>Awaiting Financial Processing</h4><p class="val">{{ $awaitingProcessing ?? 0 }}</p><p class="sub">Approved, not yet completed</p></a>
+        <a href="{{ route('admin.financial-requests.index', ['status' => 'completed']) }}" class="fms-stat fms-stat-link"><h4>Completed Transactions</h4><p class="val">{{ $completedTransactions ?? 0 }}</p><p class="sub">Actual posted to budget</p></a>
         <a href="{{ route('admin.reports.reconciliations', ['status' => 'submitted']) }}" class="fms-stat fms-stat-link"><h4>Pending Reconciliations</h4><p class="val">{{ $pendingReconciliations ?? 0 }}</p></a>
         <a href="{{ route('admin.budgets.index', ['status' => 'approved']) }}" class="fms-stat fms-stat-link"><h4>Approved Plans</h4><p class="val">{{ $approvedPlans ?? 0 }}</p></a>
         <a href="{{ route('admin.budgets.index', ['status' => 'rejected']) }}" class="fms-stat fms-stat-link"><h4>Rejected</h4><p class="val">{{ $rejectedCount ?? 0 }}</p></a>

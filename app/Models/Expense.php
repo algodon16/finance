@@ -68,6 +68,27 @@ class Expense extends Model
         return $this->belongsTo(AccountsPayable::class, 'related_payable_id');
     }
 
+    /**
+     * Financial-processing stage for disbursements linked to an approved
+     * Financial Request (Original Request → AP → Disbursement chain).
+     * Returns null for records outside that flow.
+     *
+     * FOR PROCESSING → PROCESSING → RECORDED → COMPLETED
+     */
+    public function getProcessingStageAttribute(): ?string
+    {
+        $ap = $this->relationLoaded('sourcePayable') ? $this->getRelation('sourcePayable') : $this->sourcePayable;
+        if (! $ap || ! $ap->financial_request_id) return null;
+        $fr = $ap->relationLoaded('financialRequest') ? $ap->getRelation('financialRequest') : $ap->financialRequest;
+        if ($this->payment_status === 'paid' || ($fr && $fr->status === 'completed')) return 'COMPLETED';
+        $actual = $fr ? $fr->actual_amount : null;
+        $paid = (float) $ap->amount_paid;
+        $docs = (bool) ($this->supporting_document || $this->proof_of_payment || $ap->supporting_document);
+        if ($actual && $paid + 0.009 >= $actual && $docs) return 'RECORDED';
+        if ($actual || $paid > 0) return 'PROCESSING';
+        return 'FOR PROCESSING';
+    }
+
     /** Manual proposals that were used as an AP source (AP created from this expense). */
     public function payables()
     {

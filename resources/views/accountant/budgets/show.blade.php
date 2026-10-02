@@ -6,19 +6,26 @@
 @if($plan->admin_remarks && !$plan->rejection_reason)<div class="dashboard-card"><strong>Admin remarks:</strong> {{ $plan->admin_remarks }}</div>@endif
 <div class="two-col-grid">
 <div class="dashboard-card"><h3>Plan Details</h3>
-<p><strong>Fiscal Year:</strong> {{ $plan->fiscal_year }}</p>
+<p><strong>Request ID:</strong> {{ $plan->request_id }}</p>
+<p><strong>Request Type:</strong> {{ $plan->request_type_label }}</p>
+<p><strong>Academic Year:</strong> {{ $plan->academic_year }}</p>
+<p><strong>Requested:</strong> ₱{{ number_format($plan->requested_amount_value,2) }} | <strong>Proposed:</strong> {{ $plan->proposed_amount ? '₱'.number_format((float) $plan->proposed_amount,2) : '—' }} | <strong>Approved:</strong> {{ $plan->approved_amount ? '₱'.number_format((float) $plan->approved_amount,2) : '—' }} | <strong>Allocated:</strong> ₱{{ number_format((float) $plan->allocated_amount,2) }}</p>
+@if($plan->accountant_remarks)<p><strong>Accountant Remarks:</strong> {{ $plan->accountant_remarks }}</p>@endif
+@if($plan->allocation_recommendation)<p><strong>Allocation Recommendation:</strong> {{ \App\Models\BudgetPlan::RECOMMENDATIONS[$plan->allocation_recommendation] ?? $plan->allocation_recommendation }}</p>@endif
+@if($plan->documents_verified_flag)<p><strong>Documents Verified:</strong> Yes</p>@endif
 <p><strong>Budget Period Start:</strong> {{ optional($plan->start_date)->format('M d, Y') ?? '—' }} | <strong>Budget Period End:</strong> {{ optional($plan->end_date)->format('M d, Y') ?? '—' }}</p>
 <p><strong>Department:</strong> {{ $plan->department }} | <strong>Category:</strong> {{ $plan->budget_category }} | <strong>Fund Source:</strong> {{ $plan->funding_source }}</p>
 <p><strong>Description:</strong> {{ $plan->description ?: '—' }}</p>
 <p><strong>Justification:</strong> {{ $plan->justification ?: '—' }}</p>
 @if($plan->items->count())
-<div class="alert alert-error" style="margin-top:10px;"><strong>Legacy line items ({{ $plan->items->count() }}):</strong> preserved from before the move. New item breakdowns are prepared under Procurement and Financial Requests.</div>
-<div class="table-responsive"><table class="table"><thead><tr><th>Item (legacy)</th><th>Category</th><th>Qty</th><th>Unit Cost</th><th>Line Total</th></tr></thead><tbody>
-@foreach($plan->items as $it)<tr><td>{{ $it->item_name }}<br><span class="summary-desc">{{ $it->justification }}</span></td><td>{{ $it->category ?? '—' }}</td><td>{{ $it->quantity }}</td><td>₱{{ number_format($it->unit_cost,2) }}</td><td>₱{{ number_format($it->line_total,2) }}</td></tr>
+<h4 style="margin-top:10px;">Budget Breakdown</h4>
+<div class="table-responsive"><table class="table"><thead><tr><th>Category</th><th>Description</th><th style="text-align:right;">Amount</th></tr></thead><tbody>
+@foreach($plan->items as $it)<tr><td>{{ $it->category ?? '—' }}</td><td>{{ $it->item_name }}</td><td style="text-align:right;">₱{{ number_format($it->line_total,2) }}</td></tr>
 @endforeach
+<tr><td colspan="2" style="font-weight:700;">Total Proposed Budget</td><td style="text-align:right;font-weight:700;">₱{{ number_format($plan->items->sum('line_total'),2) }}</td></tr>
 </tbody></table></div>
 @else
-<p class="summary-desc" style="margin-top:10px;">No line items here — item breakdown is now under <a href="{{ route('accountant.financial-requests.create') }}">Procurement and Financial Requests</a>.</p>
+<p class="summary-desc" style="margin-top:10px;">No budget breakdown items.</p>
 @endif
 @if($plan->supporting_document)<p><a href="{{ asset('storage/'.$plan->supporting_document) }}" target="_blank" class="btn btn-sm btn-secondary">View supporting document</a></p>@endif
 </div>

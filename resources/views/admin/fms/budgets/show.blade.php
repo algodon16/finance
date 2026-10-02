@@ -19,8 +19,16 @@
 <div class="fms-panel">
     <h3>Plan Information</h3>
     <table class="fms-table"><tbody>
-        <tr><td style="width:220px;color:#64748b;">Reference No.</td><td><strong>BUD-{{ $budget->id }}</strong></td></tr>
-        <tr><td style="color:#64748b;">Fiscal Year</td><td>{{ $budget->fiscal_year }}</td></tr>
+        <tr><td style="width:220px;color:#64748b;">Reference No.</td><td><strong>BUD-{{ $budget->id }}</strong> &nbsp;|&nbsp; Request ID: <strong>{{ $budget->request_id }}</strong></td></tr>
+        <tr><td style="color:#64748b;">Request Type</td><td>{{ $budget->request_type_label }}</td></tr>
+        <tr><td style="color:#64748b;">Academic Year</td><td>{{ $budget->academic_year }}</td></tr>
+        <tr><td style="color:#64748b;">Requested / Proposed / Approved</td><td>P{{ number_format($budget->requested_amount_value, 2) }} / P{{ number_format($budget->proposed_amount_value, 2) }} / {{ $budget->approved_amount ? 'P'.number_format((float) $budget->approved_amount, 2) : '—' }}</td></tr>
+        @php $showFund = $budget->linkedFund(); @endphp
+        @if($showFund)<tr><td style="color:#64748b;">Available Fund ({{ $showFund->fund_name }})</td><td><strong>P{{ number_format((float) $showFund->available_amount, 2) }}</strong> <span style="color:#64748b;font-size:.8rem;">(Total P{{ number_format((float) $showFund->initial_balance, 2) }} · Allocated P{{ number_format((float) $showFund->used_amount, 2) }})</span></td></tr>@endif
+        @if($budget->accountant_remarks)<tr><td style="color:#64748b;">Accountant Remarks</td><td>{{ $budget->accountant_remarks }}</td></tr>@endif
+        @if($budget->allocation_recommendation)<tr><td style="color:#64748b;">Allocation Recommendation</td><td>{{ \App\Models\BudgetPlan::RECOMMENDATIONS[$budget->allocation_recommendation] ?? $budget->allocation_recommendation }}</td></tr>@endif
+        @if($budget->documents_verified_flag)<tr><td style="color:#64748b;">Documents Verified</td><td>Yes</td></tr>@endif
+        <tr><td style="color:#64748b;">Reviewed</td><td>{{ $budget->reviewed_at?->format('M d, Y h:i A') ?? '—' }} by {{ $budget->reviewer->name ?? '—' }}</td></tr>
         <tr><td style="color:#64748b;">Department</td><td>{{ $budget->department ?? '—' }}</td></tr>
         <tr><td style="color:#64748b;">Category</td><td>{{ $budget->budget_category }}</td></tr>
         <tr><td style="color:#64748b;">Period</td><td>{{ $budget->start_date?->format('M d, Y') }} to {{ $budget->end_date?->format('M d, Y') }}</td></tr>
@@ -32,20 +40,22 @@
         @if($budget->admin_remarks)<tr><td style="color:#64748b;">Admin Remarks</td><td>{{ $budget->admin_remarks }}</td></tr>@endif
     </tbody></table>
     @if($budget->items && $budget->items->count())
-    <h3 style="margin-top:12px;">Line Items</h3>
-    <table class="fms-table"><thead><tr><th>Item</th><th>Qty</th><th style="text-align:right;">Unit Cost</th><th style="text-align:right;">Total</th></tr></thead><tbody>
-    @foreach($budget->items as $it)<tr><td>{{ $it->item_name }}</td><td>{{ $it->quantity }}</td><td style="text-align:right;">P{{ number_format($it->unit_cost,2) }}</td><td style="text-align:right;">P{{ number_format($it->line_total,2) }}</td></tr>@endforeach
+    <h3 style="margin-top:12px;">Budget Breakdown</h3>
+    <table class="fms-table"><thead><tr><th>Category</th><th>Description</th><th style="text-align:right;">Amount</th></tr></thead><tbody>
+    @foreach($budget->items as $it)<tr><td>{{ $it->category ?? '—' }}</td><td>{{ $it->item_name }}</td><td style="text-align:right;">P{{ number_format($it->line_total,2) }}</td></tr>@endforeach
+    <tr><td colspan="2" style="font-weight:700;">Total Proposed Budget</td><td style="text-align:right;font-weight:700;">P{{ number_format($budget->items->sum('line_total'),2) }}</td></tr>
     </tbody></table>
     @endif
 </div>
 
-@if(in_array($budget->status, ['submitted','under_review']))
+@if(in_array($budget->status, ['for_approval','submitted','under_review']))
 <div class="fms-panel">
-    <h3>Review Submission — Approve / Return for Revision / Reject (same record)</h3>
+    <h3>Request Decision — Approve (auto-allocates) / Return for Revision / Reject</h3>
+    <p style="color:#64748b;font-size:.85rem;">Approving sets P{{ number_format($budget->proposed_amount_value,2) }} as the official budget, auto-creates the Budget Allocation record, and deducts it from {{ $budget->funding_source ?: 'the linked fund' }}. Rejection/return requires a reason.</p>
     <div style="display:flex;gap:16px;flex-wrap:wrap;">
-    <form method="POST" action="{{ route('admin.budgets.approve', $budget) }}">@csrf<textarea name="admin_remarks" class="form-control" rows="2" placeholder="Approval remarks (optional)"></textarea><button class="btn btn-primary" style="margin-top:8px;" type="submit">Approve</button></form>
-    <form method="POST" action="{{ route('admin.budgets.for-revision', $budget) }}">@csrf<textarea name="admin_remarks" class="form-control" rows="2" placeholder="What should the accountant revise? (required)" required></textarea><button class="btn btn-secondary" style="margin-top:8px;" type="submit">Return for Revision</button></form>
-    <form method="POST" action="{{ route('admin.budgets.reject', $budget) }}">@csrf<input type="text" name="rejection_reason" class="form-control" placeholder="Rejection reason (required)" required><textarea name="admin_remarks" class="form-control" rows="2" style="margin-top:8px;" placeholder="Remarks (optional)"></textarea><button class="btn btn-danger" style="margin-top:8px;" type="submit">Reject</button></form>
+    <form method="POST" action="{{ route('admin.budgets.approve-request', $budget) }}">@csrf<div><label style="font-size:0.8rem;">Approved Amount (₱)</label><br><input type="number" step="0.01" min="0.01" name="approved_amount" class="form-control" value="{{ $budget->proposed_amount_value }}" required></div><textarea name="admin_remarks" class="form-control" rows="2" style="margin-top:8px;" placeholder="Approval remarks (required if amount adjusted)"></textarea><button class="btn btn-success" style="margin-top:8px;" type="submit">Approve</button></form>
+    <form method="POST" action="{{ route('admin.budgets.return-request', $budget) }}">@csrf<textarea name="admin_remarks" class="form-control" rows="2" placeholder="What should the accountant revise? (required)" required></textarea><button class="btn btn-secondary" style="margin-top:8px;" type="submit">Return for Revision</button></form>
+    <form method="POST" action="{{ route('admin.budgets.reject-request', $budget) }}">@csrf<input type="text" name="rejection_reason" class="form-control" placeholder="Rejection reason (required)" required><textarea name="admin_remarks" class="form-control" rows="2" style="margin-top:8px;" placeholder="Remarks (optional)"></textarea><button class="btn btn-danger" style="margin-top:8px;" type="submit">Reject</button></form>
     </div>
 </div>
 @endif
@@ -83,10 +93,11 @@
     <h3>Allocation History</h3>
     <div style="overflow-x:auto;">
     <table class="fms-table">
-        <thead><tr><th>Date</th><th>Type</th><th>Allocated To</th><th style="text-align:right;">Amount</th><th>Remarks</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Allocation ID</th><th>Date</th><th>Type</th><th>Allocated To</th><th style="text-align:right;">Amount</th><th>Remarks</th><th>Actions</th></tr></thead>
         <tbody>
         @forelse($budget->allocations as $a)
             <tr>
+                <td><strong>{{ $a->allocation_id }}</strong></td>
                 <td>{{ $a->allocation_date }}</td>
                 <td>{{ ucfirst($a->allocation_type) }}</td>
                 <td>{{ $a->allocated_to ?? '—' }}</td>
@@ -95,7 +106,7 @@
                 <td><form method="POST" action="{{ route('admin.budgets.allocations.destroy', [$budget, $a]) }}" onsubmit="return confirm('Remove this allocation?');">@csrf @method('DELETE')<button class="btn btn-sm btn-danger" type="submit">Remove</button></form></td>
             </tr>
         @empty
-            <tr><td colspan="6" style="color:#64748b;">No financial records available.</td></tr>
+            <tr><td colspan="7" style="color:#64748b;">No financial records available.</td></tr>
         @endforelse
         </tbody>
     </table>

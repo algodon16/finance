@@ -20,6 +20,134 @@ use Illuminate\Support\Facades\DB;
 class ApDisbursementService
 {
     /**
+     * Fulfillment for an approved Financial Request (admin approval → financial processing).
+     *
+     * Creates the linked Accounts Payable (approved, for disbursement) and its
+     * auto-generated Expense disbursement (approved, for_disbursement = FOR PROCESSING).
+     * Idempotent — returns the existing disbursement when already fulfilled.
+     * No duplicate request is created: the AP references financial_request_id and
+     * preserves source_request_id as its invoice identity.
+     *
+     * Budget is NOT utilized here: the approved FR already encumbers the budget
+     * as committed (see FinancialRequest::COMMITTED). Utilization is posted only
+     * on completion with the ACTUAL amount.
+     *
+     * @return array{payable: AccountsPayable, expense: Expense, approved_amount: float}
+     */
+    public static function generateFromFinancialRequest(\App\Models\FinancialRequest $fr): array
+    {
+        abort_if(! in_array($fr->status, ['approved', 'completed'], true), 422, 'Fulfillment requires an approved financial request.');
+        $fr->loadMissing(['budgetPlan']);
+
+        $existing = AccountsPayable::where('financial_request_id', $fr->id)->lockForUpdate()->first();
+        if ($existing) {
+            $expense = Expense::where('related_payable_id', $existing->id)->first()
+                ?? static::generateFor($existing->fresh());
+            return ['payable' => $existing->fresh(), 'expense' => $expense, 'approved_amount' => (float) $existing->amount];
+        }
+
+        $meta = is_array($fr->metadata) ? $fr->metadata : [];
+        $approvedAmount = (float) ($meta['recommended_amount'] ?? $fr->amount);
+        abort_if($approvedAmount <= 0, 422, 'Approved amount must be greater than 0.');
+
+        // Re-validate budget cover at approval time (same gates as intake).
+        if ($fr->budget_plan_id) {
+            $v = \App\Models\FinancialRequest::budgetValidation($fr->budgetPlan, $approvedAmount, $fr->id);
+            abort_if(! $v, 422, 'Linked budget is not approved/active.');
+            abort_if(! $v['valid'], 422, 'Budget insufficient: approved P'.number_format($approvedAmount, 2).' exceeds available P'.number_format($v['available'], 2).'.');
+        }
+
+        $items = $meta['items'] ?? [];
+        $suppliers = collect($items)->pluck('supplier')->filter()->unique()->values();
+        $categories = collect($items)->pluck('category')->filter()->unique()->values();
+
+        // Preserve the original request identity; keep invoice_number globally unique.
+        $base = trim((string) ($fr->source_request_id ?: $fr->request_number)) ?: ('FR-'.$fr->id);
+        $invoice = $base;
+        for ($i = 2; AccountsPayable::where('invoice_number', $invoice)->exists(); $i++) {
+            $invoice = $base.'-'.$i;
+        }
+
+        $allocationId = null;
+        if (($fr->reference_type === \App\Models\FundAllocation::class) && $fr->reference_id) {
+            $allocationId = $fr->reference_id;
+        }
+
+        $ap = AccountsPayable::create([
+            'vendor' => $suppliers->isNotEmpty() ? $suppliers->join(', ') : ($fr->department.' (TBD)'),
+            'invoice_number' => $invoice,
+            'invoice_date' => today()->toDateString(),
+            'due_date' => today()->addDays(30)->toDateString(),
+            'amount' => $approvedAmount,
+            'amount_paid' => 0,
+            'payment_terms' => '30 Days',
+            'payment_status' => 'approved',
+            'approval_status' => 'approved',
+            'category' => $categories->first() ?? $fr->request_type,
+            'description' => $fr->description,
+            'budget_plan_id' => $fr->budget_plan_id,
+            'fund_allocation_id' => $allocationId,
+            'financial_request_id' => $fr->id,
+            'supporting_document' => $fr->supporting_document,
+            'submitted_at' => now(),
+            'submitted_by' => $fr->prepared_by,
+            'reviewed_at' => now(),
+            'reviewed_by' => auth()->id(),
+            'approved_by' => auth()->id(),
+            'approved_at' => now(),
+            'created_by' => auth()->id(),
+        ]);
+
+        // Store the authorization ceiling on the request itself (original amount untouched).
+        $meta['approved_amount'] = $approvedAmount;
+        $meta['fulfilled_ap_id'] = $ap->id;
+        $fr->update(['metadata' => $meta]);
+
+        // Inline expense creation (same transaction as caller).
+        $ap->loadMissing(['financialRequest', 'budgetPlan']);
+        $department = $ap->financialRequest->department ?? null;
+
+        $expense = Expense::create([
+            'reference_number' => 'ED-'.now()->format('Ymd').'-'.strtoupper(uniqid()),
+            'expense_category' => $ap->category ?: 'Accounts Payable',
+            'department' => $department,
+            'payee' => $ap->vendor,
+            'amount' => $ap->amount,
+            'expense_date' => optional($ap->invoice_date)->toDateString() ?? today()->toDateString(),
+            'proposed_payment_date' => optional($ap->due_date)->toDateString(),
+            'description' => 'Disbursement for '.$ap->ap_number.' (Invoice '.$ap->invoice_number.')'
+                .($ap->description ? ' — '.$ap->description : ''),
+            'supporting_document' => $ap->supporting_document,
+            'approval_status' => 'approved',
+            'payment_status' => 'for_disbursement',
+            'budget_plan_id' => $ap->budget_plan_id,
+            'fund_id' => $ap->fund_id,
+            'fund_allocation_id' => $ap->fund_allocation_id,
+            'related_payable_id' => $ap->id,
+            'approved_by' => $ap->approved_by ?? auth()->id(),
+            'approved_at' => $ap->approved_at ?? now(),
+            'reviewed_by' => $ap->reviewed_by ?? $ap->approved_by ?? auth()->id(),
+            'reviewed_at' => $ap->reviewed_at ?? now(),
+            'created_by' => auth()->id(),
+        ]);
+
+        AuditService::log('fulfill', 'financial_requests', (string) $fr->id, ['status' => 'approved'], ['status' => 'approved'],
+            'System linked approved '.$fr->display_ref.' to '.$ap->ap_number.' / Disbursement '.$expense->reference_number.' (FOR PROCESSING). No duplicate request created.');
+        AuditService::log('auto_generate', 'expenses', (string) $expense->id, null, null,
+            'System auto-generated Disbursement '.$expense->reference_number.' from approved '.$ap->ap_number.' (₱'.number_format($expense->amount, 2).'). No manual entry.');
+        AuditService::log('disburse', 'accounts_payable', (string) $ap->id, ['status' => 'approved'], ['status' => 'approved'],
+            'Approved '.$ap->ap_number.' forwarded to Expense & Disbursement Tracking as '.$expense->reference_number.'.');
+        WorkflowService::notifyUser($fr->prepared_by,
+            $fr->display_ref.' approved — ready for financial processing.',
+            'Admin approved '.$fr->display_ref.' (₱'.number_format($approvedAmount, 2).'). It is now FOR PROCESSING in Expense & Disbursement Tracking as '.$expense->reference_number.'.');
+        WorkflowService::notifyUser($ap->created_by,
+            $ap->ap_number.' is now For Disbursement.',
+            'Disbursement '.$expense->reference_number.' was auto-generated. Open Expense & Disbursement Tracking to settle it.');
+
+        return ['payable' => $ap->fresh(), 'expense' => $expense, 'approved_amount' => $approvedAmount];
+    }
+
+    /**
      * Create the disbursement record for an approved AP. Idempotent —
      * returns the existing record when one is already linked.
      */

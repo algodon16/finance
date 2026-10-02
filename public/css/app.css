@@ -1469,117 +1469,318 @@ input[type="radio"] {
 }
 
 /* ----------------------------------------
-   13. MODALS
+   13. MODALS (Standardized)
    ---------------------------------------- */
+/* Base overlay — full-screen backdrop */
 .modal-overlay {
     display: none;
     position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.5);
+    inset: 0;
+    background-color: rgba(15, 42, 90, 0.5);
     z-index: 2000;
     align-items: center;
     justify-content: center;
-    padding: 20px;
+    padding: 24px;
+    overflow-y: auto;
 }
 
-.modal-overlay.active {
+/* Show modal */
+.modal-overlay.active,
+.modal-overlay[style*="display: flex"],
+.modal-overlay[style*="display:flex"] {
     display: flex;
 }
 
+/* Modal container — standardized */
 .modal {
     background-color: var(--card-bg);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-lg);
     width: 100%;
     max-width: 560px;
-    max-height: 85vh;
+    max-height: 90vh;
     display: flex;
     flex-direction: column;
     animation: modalIn 0.25s ease;
+    overflow: hidden;
 }
 
 @keyframes modalIn {
-    from {
-        opacity: 0;
-        transform: scale(0.95) translateY(10px);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1) translateY(0);
-    }
+    from { opacity: 0; transform: scale(0.96) translateY(8px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
 }
 
+/* Modal header — standardized */
 .modal-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 20px 24px;
+    padding: 16px 20px;
     border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
 }
 
 .modal-header h3 {
-    font-size: 1.125rem;
+    font-size: 1.0625rem;
     font-weight: 600;
+    color: var(--text);
+    margin: 0;
 }
 
+.modal-header .badge {
+    flex-shrink: 0;
+    margin-left: 8px;
+}
+
+/* Close button — standardized */
 .modal-close {
-    font-size: 1.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    font-size: 1.375rem;
+    line-height: 1;
     color: var(--text-muted);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius);
     cursor: pointer;
     transition: var(--transition);
-    background: none;
-    border: none;
-    line-height: 1;
-    padding: 4px;
+    flex-shrink: 0;
+    padding: 0;
 }
 
 .modal-close:hover {
     color: var(--danger);
+    background-color: var(--danger-light);
 }
 
+.modal-close:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+/* Modal body — standardized */
 .modal-body {
-    padding: 24px;
+    padding: 20px 20px 16px;
     overflow-y: auto;
     flex: 1;
 }
 
+/* Modal footer — standardized */
 .modal-footer {
     display: flex;
     align-items: center;
     justify-content: flex-end;
     gap: 8px;
-    padding: 16px 24px;
+    padding: 12px 20px;
     border-top: 1px solid var(--border);
+    flex-shrink: 0;
 }
 
-/* Confirm Modal */
-.modal-confirm .modal-body {
-    text-align: center;
-    padding: 32px 24px;
-}
-
-.modal-confirm .confirm-icon {
-    font-size: 3rem;
+/* Form elements inside modals */
+.modal-body .form-group {
     margin-bottom: 16px;
 }
 
+.modal-body .form-group:last-child {
+    margin-bottom: 0;
+}
+
+.modal-body .form-control {
+    padding: 9px 12px;
+    font-size: 0.875rem;
+}
+
+.modal-body .form-group label {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    margin-bottom: 6px;
+}
+
+/* Modal footer buttons — consistent sizing */
+.modal-footer .btn {
+    min-height: 36px;
+    padding: 0 16px;
+    font-size: 0.875rem;
+}
+
+/* Modal sizes — utility classes */
+.modal-sm { max-width: 420px; }
+.modal-lg { max-width: 720px; }
+.modal-xl { max-width: 900px; }
+.modal-full { max-width: 95vw; }
+
+/* Narrow modal for confirm dialogs */
+.modal-confirm .modal-body {
+    text-align: center;
+    padding: 28px 20px 16px;
+}
+
+.modal-confirm .confirm-icon {
+    font-size: 2.5rem;
+    margin-bottom: 12px;
+    display: inline-block;
+    width: 64px;
+    height: 64px;
+    line-height: 64px;
+    border-radius: 50%;
+    background: var(--primary-light);
+    color: var(--primary);
+}
+
+.modal-confirm .confirm-icon.danger {
+    background: var(--danger-light);
+    color: var(--danger);
+}
+
+.modal-confirm .confirm-icon.success {
+    background: var(--success-light);
+    color: var(--success);
+}
+
 .modal-confirm .confirm-message {
-    font-size: 1rem;
+    font-size: 0.9375rem;
     color: var(--text);
-    margin-bottom: 8px;
+    margin-bottom: 4px;
+    font-weight: 500;
 }
 
 .modal-confirm .confirm-submessage {
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
     color: var(--text-muted);
+    margin-top: 4px;
 }
 
-.modal-confirm .modal-footer {
-    justify-content: center;
+/* Scrollable modal for long content */
+.modal-scrollable .modal-body {
+    max-height: 60vh;
 }
+
+/* Override for full-screen on mobile */
+@media (max-width: 640px) {
+    .modal-overlay {
+        padding: 12px;
+        align-items: stretch;
+    }
+    .modal {
+        max-height: 100%;
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        max-height: 100vh;
+    }
+    .modal-header {
+        padding: 14px 16px;
+    }
+    .modal-body {
+        padding: 16px;
+    }
+    .modal-footer {
+        padding: 12px 16px;
+        flex-wrap: wrap;
+    }
+    .modal-footer .btn {
+        flex: 1;
+        justify-content: center;
+    }
+}
+
+/* Small modal for quick actions */
+.modal-sm { max-width: 380px; }
+
+/* Confirmation modal specific */
+.modal-confirm .confirm-icon {
+    font-size: 2.5rem;
+    margin-bottom: 12px;
+    display: inline-block;
+    width: 64px;
+    height: 64px;
+    line-height: 64px;
+    border-radius: 50%;
+    background: var(--primary-light);
+    color: var(--primary);
+}
+
+.modal-confirm .confirm-icon.danger {
+    background: var(--danger-light);
+    color: var(--danger);
+}
+
+.modal-confirm .confirm-icon.success {
+    background: var(--success-light);
+    color: var(--success);
+}
+
+.modal-confirm .confirm-message {
+    font-size: 0.9375rem;
+    color: var(--text);
+    margin-bottom: 4px;
+    font-weight: 500;
+}
+
+.modal-confirm .confirm-submessage {
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+/* ============================================
+   Form-item spacing inside modals
+   ============================================ */
+.modal-body .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+@media (max-width: 560px) {
+    .modal-body .form-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Modal with sidebar layout */
+.modal-with-sidebar {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    max-height: 90vh;
+}
+
+.modal-sidebar {
+    border-right: 1px solid var(--border);
+    padding: 16px;
+    overflow-y: auto;
+    background: var(--bg);
+}
+
+.modal-main {
+    padding: 16px;
+    overflow-y: auto;
+}
+
+@media (max-width: 880px) {
+    .modal-with-sidebar {
+        grid-template-columns: 1fr;
+    }
+    .modal-sidebar {
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        max-height: 200px;
+    }
+}
+
+/* Modal footer buttons — consistent sizing */
+.modal-footer .btn {
+    min-height: 36px;
+    padding: 0 16px;
+    font-size: 0.875rem;
+}
+
+/* Modal sizes — utility classes */
+.modal-sm { max-width: 420px; }
+.modal-lg { max-width: 720px; }
+.modal-xl { max-width: 900px; }
+.modal-full { max-width: 95vw; }
 
 /* ----------------------------------------
    14. PROGRESS BARS
